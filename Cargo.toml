@@ -4,6 +4,7 @@ members = [
 	"crates/mycelium-core",
 	"crates/mycelium-linux",
 	"crates/mycelium-cli",
+	"crates/mycelium-mcp",
 ]
 
 [workspace.package]

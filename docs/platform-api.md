@@ -10,7 +10,7 @@ pub trait Platform: Send + Sync {
 }
 ```
 
-All methods are synchronous. The MCP layer (Phase 2) wraps calls with `spawn_blocking` for async contexts. `/proc` reads are kernel-backed memory operations that complete in microseconds.
+All methods are synchronous. The MCP server wraps calls with `tokio::task::spawn_blocking` for async contexts. `/proc` reads are kernel-backed memory operations that complete in microseconds.
 
 ## Methods by Category
 

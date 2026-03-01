@@ -1,4 +1,4 @@
-/// System-level types.
+//! System-level types.
 
 /// High-level system information.
 #[derive(Debug, Clone)]

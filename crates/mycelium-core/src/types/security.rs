@@ -1,4 +1,4 @@
-/// Security-related types.
+//! Security-related types.
 
 /// A system user account.
 #[derive(Debug, Clone)]

@@ -46,7 +46,7 @@ impl TuningCmd {
 
 impl TableDisplay for TunableParam {
 	fn print_header() {
-		println!("{:<50} {}", "KEY", "VALUE");
+		println!("{:<50} VALUE", "KEY");
 	}
 
 	fn print_row(&self) {

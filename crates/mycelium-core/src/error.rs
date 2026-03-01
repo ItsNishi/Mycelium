@@ -1,4 +1,4 @@
-/// Mycelium error types.
+//! Mycelium error types.
 
 use core::fmt;
 

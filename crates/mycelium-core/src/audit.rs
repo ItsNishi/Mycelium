@@ -1,4 +1,4 @@
-/// Audit logging types.
+//! Audit logging types.
 
 /// Outcome of a tool invocation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

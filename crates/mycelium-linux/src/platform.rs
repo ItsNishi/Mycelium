@@ -1,4 +1,4 @@
-/// LinuxPlatform -- the primary Platform implementation for Linux.
+//! LinuxPlatform -- the primary Platform implementation for Linux.
 
 use mycelium_core::error::Result;
 use mycelium_core::platform::Platform;

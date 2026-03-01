@@ -1,4 +1,4 @@
-/// Security queries: users, groups, kernel modules, LSM status.
+//! Security queries: users, groups, kernel modules, LSM status.
 
 use mycelium_core::error::Result;
 use mycelium_core::types::*;
@@ -171,12 +171,11 @@ fn check_firewall_active() -> bool {
 	if let Ok(output) = std::process::Command::new("nft")
 		.args(["list", "tables"])
 		.output()
+		&& output.status.success()
 	{
-		if output.status.success() {
-			let stdout = String::from_utf8_lossy(&output.stdout);
-			if !stdout.trim().is_empty() {
-				return true;
-			}
+		let stdout = String::from_utf8_lossy(&output.stdout);
+		if !stdout.trim().is_empty() {
+			return true;
 		}
 	}
 
@@ -184,12 +183,11 @@ fn check_firewall_active() -> bool {
 	if let Ok(output) = std::process::Command::new("iptables")
 		.args(["-L", "-n"])
 		.output()
+		&& output.status.success()
 	{
-		if output.status.success() {
-			let stdout = String::from_utf8_lossy(&output.stdout);
-			// Check if there are any rules beyond default empty chains
-			return stdout.lines().count() > 8;
-		}
+		let stdout = String::from_utf8_lossy(&output.stdout);
+		// Check if there are any rules beyond default empty chains
+		return stdout.lines().count() > 8;
 	}
 
 	false

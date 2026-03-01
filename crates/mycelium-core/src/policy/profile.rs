@@ -1,4 +1,4 @@
-/// Profile and role preset definitions.
+//! Profile and role preset definitions.
 
 use super::capability::Capability;
 use super::rule::{Action, PolicyRule, RuleTarget};

@@ -1,4 +1,4 @@
-/// The core Platform trait that all OS backends implement.
+//! The core Platform trait that all OS backends implement.
 
 use crate::error::Result;
 use crate::types::*;

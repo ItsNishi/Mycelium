@@ -1,4 +1,4 @@
-/// Re-exports all domain types.
+//! Re-exports all domain types.
 
 pub mod log;
 pub mod memory;

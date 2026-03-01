@@ -1,4 +1,4 @@
-/// Output formatting: JSON, table, or plain text.
+//! Output formatting: JSON, table, or plain text.
 
 use serde::Serialize;
 

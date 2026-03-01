@@ -9,6 +9,8 @@ description = "Core types, traits, and policy engine for Mycelium"
 [features]
 default = []
 serde = ["dep:serde"]
+toml = ["dep:toml", "serde"]
 
 [dependencies]
 serde = { version = "1", features = ["derive"], optional = true }
+toml = { version = "0.8", optional = true }

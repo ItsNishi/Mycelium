@@ -1,4 +1,4 @@
-/// Network queries via /proc/net/* and /sys/class/net/*.
+//! Network queries via /proc/net/* and /sys/class/net/*.
 
 use mycelium_core::error::{MyceliumError, Result};
 use mycelium_core::types::*;
@@ -103,10 +103,10 @@ fn get_ip_addresses(iface: &str) -> (Vec<String>, Vec<String>) {
 			if addr.interface_name != iface {
 				continue;
 			}
-			if let Some(address) = &addr.address {
-				if let Some(sin) = address.as_sockaddr_in() {
-					ipv4.push(format!("{}", std::net::Ipv4Addr::from(sin.ip())));
-				}
+			if let Some(address) = &addr.address
+				&& let Some(sin) = address.as_sockaddr_in()
+			{
+				ipv4.push(format!("{}", sin.ip()));
 			}
 		}
 	}
@@ -185,10 +185,10 @@ fn inode_to_pid(inode: &str) -> Option<u32> {
 			let fd_dir = format!("/proc/{pid}/fd");
 			if let Ok(fds) = fs::read_dir(&fd_dir) {
 				for fd in fds.flatten() {
-					if let Ok(link) = fs::read_link(fd.path()) {
-						if link.to_string_lossy() == target {
-							return Some(pid);
-						}
+					if let Ok(link) = fs::read_link(fd.path())
+						&& link.to_string_lossy() == target
+					{
+						return Some(pid);
 					}
 				}
 			}
@@ -420,8 +420,8 @@ fn extract_word_after(line: &str, prefix: &str) -> Option<String> {
 fn extract_quoted(line: &str, prefix: &str) -> Option<String> {
 	let pos = line.find(prefix)?;
 	let rest = &line[pos + prefix.len()..];
-	if rest.starts_with('"') {
-		rest[1..].find('"').map(|end| rest[1..end + 1].to_string())
+	if let Some(stripped) = rest.strip_prefix('"') {
+		stripped.find('"').map(|end| stripped[..end].to_string())
 	} else {
 		rest.split_whitespace()
 			.next()

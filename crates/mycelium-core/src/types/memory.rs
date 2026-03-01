@@ -1,4 +1,4 @@
-/// Memory-related types.
+//! Memory-related types.
 
 /// System-wide memory information.
 #[derive(Debug, Clone)]

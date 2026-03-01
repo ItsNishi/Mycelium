@@ -1,4 +1,4 @@
-/// Kernel tunable types.
+//! Kernel tunable types.
 
 /// A tunable kernel parameter (e.g. sysctl).
 #[derive(Debug, Clone)]

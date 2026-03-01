@@ -1,4 +1,4 @@
-/// Policy rule types.
+//! Policy rule types.
 
 use super::capability::Capability;
 

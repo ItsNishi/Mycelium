@@ -64,8 +64,8 @@ impl LogCmd {
 impl TableDisplay for LogEntry {
 	fn print_header() {
 		println!(
-			"{:<12} {:<7} {:<20} {}",
-			"TIMESTAMP", "LEVEL", "UNIT", "MESSAGE"
+			"{:<12} {:<7} {:<20} MESSAGE",
+			"TIMESTAMP", "LEVEL", "UNIT"
 		);
 	}
 

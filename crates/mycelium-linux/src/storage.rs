@@ -1,4 +1,4 @@
-/// Storage queries via /proc, /sys/block, and statvfs.
+//! Storage queries via /proc, /sys/block, and statvfs.
 
 use mycelium_core::error::Result;
 use mycelium_core::types::*;
@@ -82,7 +82,7 @@ pub fn list_partitions() -> Result<Vec<Partition>> {
 			"/sys/class/block/{name}/device/../{name}/../../{name}/dm/uuid"
 		))
 		.ok()
-		.or_else(|| {
+		.or({
 			// Check if blkid info available in /run
 			None
 		});
@@ -170,7 +170,7 @@ pub fn list_mounts() -> Result<Vec<MountPoint>> {
 fn statvfs_info(path: &str) -> (u64, u64, u64, f64) {
 	match nix::sys::statvfs::statvfs(path) {
 		Ok(stat) => {
-			let block_size = stat.block_size() as u64;
+			let block_size = stat.block_size();
 			let total = stat.blocks() * block_size;
 			let available = stat.blocks_available() * block_size;
 			let free = stat.blocks_free() * block_size;

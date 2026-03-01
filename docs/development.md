@@ -47,24 +47,32 @@ cargo test -p mycelium-core -- policy::tests::read_only_denies_writes
 
 - **Unit tests:** `#[cfg(test)] mod tests` blocks within source files
 - **Integration tests:** `tests/` directories within each crate
-- **Policy engine tests:** 12 tests in `mycelium-core/src/policy/mod.rs` covering roles, specificity, filters, dry-run, and overrides
+- **Policy evaluation tests:** 13 tests in `mycelium-core/src/policy/mod.rs` covering roles, specificity, filters, dry-run, and overrides
+- **Policy config tests:** 6 tests in `mycelium-core/src/policy/config.rs` covering TOML parsing, profile resolution, and filters
 
 ### What's Tested
 
-| Area | Tests | Coverage |
+| Area | Tests | Location |
 |------|-------|----------|
-| Default policy (allow all) | 1 | Default behavior |
-| ReadOnly role | 1 | Allows reads, denies all 6 write capabilities |
-| Operator role | 1 | Allows reads + process/service, denies 4 capabilities |
-| Admin role | 1 | Allows everything |
-| Profile overrides | 1 | Tool-level allow overrides capability-level deny |
-| Service name filter | 1 | Filter matches/mismatches on service names |
-| Tunable prefix filter | 1 | Filter matches/mismatches on sysctl prefixes |
-| Dry-run propagation | 1 | Profile dry-run flag |
-| Global dry-run override | 1 | Global flag overrides profile |
-| Unknown profile fallback | 1 | Falls back to default profile |
-| Last rule wins | 1 | Same specificity, order determines winner |
-| Specificity ordering | 1 | More specific target always wins |
+| Default policy (allow all) | 1 | `policy/mod.rs` |
+| ReadOnly role | 1 | `policy/mod.rs` |
+| Operator role | 1 | `policy/mod.rs` |
+| Admin role | 1 | `policy/mod.rs` |
+| Profile overrides | 1 | `policy/mod.rs` |
+| Service name filter | 1 | `policy/mod.rs` |
+| Tunable prefix filter | 1 | `policy/mod.rs` |
+| Dry-run propagation | 1 | `policy/mod.rs` |
+| Global dry-run override | 1 | `policy/mod.rs` |
+| Unknown profile fallback | 1 | `policy/mod.rs` |
+| Last rule wins | 1 | `policy/mod.rs` |
+| Specificity ordering | 1 | `policy/mod.rs` |
+| Global rules combine with profile | 1 | `policy/mod.rs` |
+| TOML parsing (full sample) | 1 | `policy/config.rs` |
+| Admin overrides global deny | 1 | `policy/config.rs` |
+| Service name filter (TOML) | 1 | `policy/config.rs` |
+| Tunable prefix filter (TOML) | 1 | `policy/config.rs` |
+| Restricted bot read-only dry-run | 1 | `policy/config.rs` |
+| Unknown agent fallback (TOML) | 1 | `policy/config.rs` |
 
 ## Code Conventions
 
@@ -95,11 +103,13 @@ Core types use conditional serde derives:
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 ```
 
-This keeps `mycelium-core` dependency-free by default. The CLI enables serde:
+This keeps `mycelium-core` dependency-free by default. The CLI and MCP server enable serde and toml:
 
 ```toml
-mycelium-core = { path = "../mycelium-core", features = ["serde"] }
+mycelium-core = { path = "../mycelium-core", features = ["serde", "toml"] }
 ```
+
+The `toml` feature enables TOML policy config parsing (`policy::config` module) and implies `serde`.
 
 ### Doc Comments
 
@@ -160,9 +170,11 @@ fn list_containers(&self) -> Result<Vec<ContainerInfo>> {
 
 5. **Add a CLI command** in `crates/mycelium-cli/src/commands/`. Create a new module, add the `Command` variant, implement `TableDisplay`, and wire it into `main.rs`.
 
-6. **Add tests** in the implementing crate.
+6. **Add an MCP tool** in `crates/mycelium-mcp/src/tools/`. Either add to an existing category file or create a new one. Register the `#[tool]` method in `tools/mod.rs` and create a request struct with `schemars::JsonSchema` derive if the tool takes parameters.
 
-7. **If it's a write operation**, add it to the appropriate `Capability` in `capability.rs` and update role presets if needed.
+7. **Add tests** in the implementing crate.
+
+8. **If it's a write operation**, add it to the appropriate `Capability` in `capability.rs` and update role presets if needed.
 
 ## Adding a New Backend
 
@@ -248,6 +260,7 @@ Mycelium/
 │   │       ├── platform.rs       Platform + ProbePlatform traits
 │   │       ├── policy/
 │   │       │   ├── mod.rs        Policy, EffectivePolicy, evaluation
+│   │       │   ├── config.rs     TOML parsing (behind "toml" feature)
 │   │       │   ├── rule.rs       PolicyRule, RuleTarget, ResourceFilter
 │   │       │   ├── profile.rs    Profile, Role presets
 │   │       │   └── capability.rs Capability enum and tool mapping
@@ -293,7 +306,24 @@ Mycelium/
 │   │           ├── log.rs
 │   │           ├── security.rs
 │   │           └── policy.rs
-│   ├── mycelium-mcp/             Phase 2 (placeholder)
+│   ├── mycelium-mcp/
+│   │   ├── Cargo.toml
+│   │   └── src/
+│   │       ├── main.rs           MCP server entry, clap args, stdio transport
+│   │       ├── lib.rs            MyceliumMcpService struct, policy/audit helpers
+│   │       ├── audit.rs          StderrAuditLog (tracing-based)
+│   │       └── tools/
+│   │           ├── mod.rs        #[tool_router] with all 32 #[tool] methods
+│   │           ├── response.rs   ok_json(), ok_text(), err_text(), dry_run_text()
+│   │           ├── process.rs    PidRequest, KillRequest, handlers
+│   │           ├── memory.rs     handle_info, handle_process
+│   │           ├── network.rs    FirewallAddRequest, FirewallRemoveRequest, handlers
+│   │           ├── storage.rs    handle_disks/partitions/mounts/io
+│   │           ├── system.rs     handle_info/kernel/cpu/uptime
+│   │           ├── tuning.rs     KeyRequest, PrefixRequest, SetRequest, handlers
+│   │           ├── service.rs    NameRequest, ActionRequest, handlers
+│   │           ├── log.rs        LogReadRequest, handle_read
+│   │           └── security.rs   handle_users/groups/modules/status
 │   └── mycelium-windows/         Phase 4 (placeholder)
 ├── examples/
 │   └── policy.toml               Example policy config

@@ -1,6 +1,8 @@
-/// Policy engine -- access control for Mycelium tools.
+//! Policy engine -- access control for Mycelium tools.
 
 pub mod capability;
+#[cfg(feature = "toml")]
+pub mod config;
 pub mod profile;
 pub mod rule;
 

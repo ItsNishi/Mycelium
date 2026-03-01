@@ -1,4 +1,4 @@
-/// System-level queries via uname, /proc/cpuinfo, /proc/uptime.
+//! System-level queries via uname, /proc/cpuinfo, /proc/uptime.
 
 use mycelium_core::error::{MyceliumError, Result};
 use mycelium_core::types::*;

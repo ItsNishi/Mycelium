@@ -1,4 +1,4 @@
-/// Mycelium Linux backend -- implements Platform using /proc, /sys, and nix.
+//! Mycelium Linux backend -- implements Platform using /proc, /sys, and nix.
 
 mod memory;
 mod network;

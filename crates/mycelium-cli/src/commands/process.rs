@@ -42,8 +42,8 @@ impl ProcessCmd {
 impl TableDisplay for ProcessInfo {
 	fn print_header() {
 		println!(
-			"{:<7} {:<7} {:<20} {:<10} {:<12} {:>8} {:>12}  {}",
-			"PID", "PPID", "NAME", "STATE", "USER", "THR", "MEM", "COMMAND"
+			"{:<7} {:<7} {:<20} {:<10} {:<12} {:>8} {:>12}  COMMAND",
+			"PID", "PPID", "NAME", "STATE", "USER", "THR", "MEM"
 		);
 	}
 

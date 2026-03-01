@@ -33,8 +33,8 @@ impl ServiceCmd {
 impl TableDisplay for ServiceInfo {
 	fn print_header() {
 		println!(
-			"{:<30} {:<10} {:<8} {:>7} {}",
-			"NAME", "STATE", "ENABLED", "PID", "DESCRIPTION"
+			"{:<30} {:<10} {:<8} {:>7} DESCRIPTION",
+			"NAME", "STATE", "ENABLED", "PID"
 		);
 	}
 

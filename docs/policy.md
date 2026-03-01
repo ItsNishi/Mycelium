@@ -221,9 +221,15 @@ Result: **Allowed** -- the tool-level allow (3) beats the capability-level deny 
 
 ## Agent Identification
 
-In MCP mode (Phase 2), agents are identified by their MCP client name. The server matches the client name against profile names to select the appropriate policy.
+In MCP mode, agents are identified by the `--agent` flag passed to `mycelium-mcp`. The server matches this name against profile names to select the appropriate policy.
+
+```bash
+mycelium-mcp --config policy.toml --agent deploy-bot
+```
 
 If no profile matches the agent name, the `default_profile` from `[global]` is used. If the default profile also doesn't exist, no profile rules apply (only global rules).
+
+See [mcp-server.md](mcp-server.md) for full MCP server documentation.
 
 ## Common Recipes
 

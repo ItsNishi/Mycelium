@@ -1,4 +1,4 @@
-/// Capability flags used by policy rules to group related operations.
+//! Capability flags used by policy rules to group related operations.
 
 /// A logical capability that one or more MCP tools require.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

@@ -71,8 +71,8 @@ impl TableDisplay for NetworkInterface {
 impl TableDisplay for Connection {
 	fn print_header() {
 		println!(
-			"{:<6} {:<25} {:<25} {:<12} {:>7} {}",
-			"PROTO", "LOCAL", "REMOTE", "STATE", "PID", "PROCESS"
+			"{:<6} {:<25} {:<25} {:<12} {:>7} PROCESS",
+			"PROTO", "LOCAL", "REMOTE", "STATE", "PID"
 		);
 	}
 
@@ -112,8 +112,8 @@ impl TableDisplay for Route {
 impl TableDisplay for OpenPort {
 	fn print_header() {
 		println!(
-			"{:<6} {:<25} {:>7} {}",
-			"PROTO", "ADDRESS", "PID", "PROCESS"
+			"{:<6} {:<25} {:>7} PROCESS",
+			"PROTO", "ADDRESS", "PID"
 		);
 	}
 

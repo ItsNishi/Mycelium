@@ -1,4 +1,4 @@
-/// Log types.
+//! Log types.
 
 /// A single log entry.
 #[derive(Debug, Clone)]

@@ -1,4 +1,4 @@
-/// Network-related types.
+//! Network-related types.
 
 /// A network interface.
 #[derive(Debug, Clone)]

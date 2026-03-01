@@ -1,4 +1,4 @@
-/// Process queries via /proc.
+//! Process queries via /proc.
 
 use mycelium_core::error::{MyceliumError, Result};
 use mycelium_core::types::{ProcessInfo, ProcessResource, ProcessState};

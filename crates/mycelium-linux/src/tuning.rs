@@ -1,4 +1,4 @@
-/// Kernel tunable queries via /proc/sys.
+//! Kernel tunable queries via /proc/sys.
 
 use mycelium_core::error::{MyceliumError, Result};
 use mycelium_core::types::*;
@@ -92,11 +92,11 @@ fn collect_tunables(path: &Path, out: &mut Vec<TunableParam>) {
 		return;
 	}
 
-	if path.is_dir() {
-		if let Ok(entries) = fs::read_dir(path) {
-			for entry in entries.flatten() {
-				collect_tunables(&entry.path(), out);
-			}
+	if path.is_dir()
+		&& let Ok(entries) = fs::read_dir(path)
+	{
+		for entry in entries.flatten() {
+			collect_tunables(&entry.path(), out);
 		}
 	}
 }

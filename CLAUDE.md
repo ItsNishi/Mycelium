@@ -16,11 +16,11 @@ cargo clippy --workspace
 
 Cargo workspace with shared zero-dep core + platform backends:
 
-- **mycelium-core**: Types, traits, errors, policy engine. Zero dependencies by default.
+- **mycelium-core**: Types, traits, errors, policy engine. Zero deps by default; optional `serde` and `toml` features.
 - **mycelium-linux**: Linux backend using /proc, /sys, nix.
-- **mycelium-windows**: Windows backend using WMI, winreg (Phase 4).
-- **mycelium-mcp**: MCP server via rmcp (Phase 2).
+- **mycelium-mcp**: MCP server -- 32 tools via rmcp 0.17, stdio transport, policy enforcement, audit logging.
 - **mycelium-cli**: CLI binary with clap.
+- **mycelium-windows**: Windows backend using WMI, winreg (Phase 4).
 
 ## Conventions
 

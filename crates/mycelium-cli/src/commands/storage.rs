@@ -62,8 +62,8 @@ impl TableDisplay for DiskInfo {
 impl TableDisplay for Partition {
 	fn print_header() {
 		println!(
-			"{:<15} {:<12} {:>12} {:<10} {}",
-			"NAME", "DISK", "SIZE", "FS", "MOUNT"
+			"{:<15} {:<12} {:>12} {:<10} MOUNT",
+			"NAME", "DISK", "SIZE", "FS"
 		);
 	}
 

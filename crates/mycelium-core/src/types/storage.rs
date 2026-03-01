@@ -1,4 +1,4 @@
-/// Storage-related types.
+//! Storage-related types.
 
 /// Physical disk information.
 #[derive(Debug, Clone)]

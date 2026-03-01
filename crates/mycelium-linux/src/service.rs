@@ -1,6 +1,6 @@
-/// Service and log queries via systemctl and journalctl.
-///
-/// Phase 1 uses CLI wrappers. Phase 2 will migrate to D-Bus via zbus.
+//! Service and log queries via systemctl and journalctl.
+//!
+//! Phase 1 uses CLI wrappers. Phase 2 will migrate to D-Bus via zbus.
 
 use mycelium_core::error::{MyceliumError, Result};
 use mycelium_core::types::*;

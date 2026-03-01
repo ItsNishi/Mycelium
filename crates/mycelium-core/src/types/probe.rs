@@ -1,4 +1,4 @@
-/// eBPF probe types (Linux only, feature-gated).
+//! eBPF probe types (Linux only, feature-gated).
 
 /// Handle to an attached probe.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

@@ -47,7 +47,7 @@ Like fungal mycelium threading through soil to surface nutrients, Mycelium threa
 | `mycelium-core` | Types, `Platform` trait, errors, policy engine. Zero dependencies by default. |
 | `mycelium-linux` | Linux backend -- `/proc`, `/sys`, `systemctl`, `journalctl` |
 | `mycelium-cli` | CLI binary with table/JSON output for every operation |
-| `mycelium-mcp` | MCP server exposing tools to AI agents *(coming soon)* |
+| `mycelium-mcp` | MCP server exposing all 32 tools to AI agents via JSON-RPC over stdio |
 | `mycelium-windows` | Windows backend *(planned)* |
 
 ## 🚀 Quick Start
@@ -55,7 +55,44 @@ Like fungal mycelium threading through soil to surface nutrients, Mycelium threa
 ### Build
 
 ```bash
+# CLI
 cargo build --release -p mycelium-cli
+
+# MCP server
+cargo build --release -p mycelium-mcp
+```
+
+### MCP Server
+
+Start the MCP server on stdio for AI agent integration:
+
+```bash
+# Default (no policy restrictions)
+mycelium-mcp
+
+# With policy and agent identity
+mycelium-mcp --config policy.toml --agent deploy-bot
+```
+
+The server speaks JSON-RPC over stdin/stdout (MCP protocol 2024-11-05). All 32 tools are registered and discoverable via `tools/list`. Policy enforcement and audit logging apply to every tool call.
+
+**Claude Desktop / MCP client config:**
+
+```json
+{
+  "mcpServers": {
+    "mycelium": {
+      "command": "/path/to/mycelium-mcp",
+      "args": ["--config", "/path/to/policy.toml", "--agent", "claude"]
+    }
+  }
+}
+```
+
+### CLI
+
+```bash
+mycelium system info
 ```
 
 ### Run
@@ -195,9 +232,9 @@ mycelium policy validate policy.toml
 
 | Phase | Status | Description |
 |-------|--------|-------------|
-| **1** | ✅ Complete | Core types, Linux read ops, CLI, policy engine, 19 tests |
-| **2** | 🔜 Next | MCP server (JSON-RPC transport, tool registration) |
-| **3** | 📋 Planned | Write operations (kill, firewall, service control, sysctl) |
+| **1** | ✅ Complete | Core types, Linux backend (read ops), CLI, policy engine |
+| **2** | ✅ Complete | MCP server (32 tools, JSON-RPC stdio, policy enforcement, audit logging) |
+| **3** | 🔜 Next | Write operations (kill, firewall, service control, sysctl) |
 | **4** | 📋 Planned | Windows backend (WMI, registry, WinAPI) |
 | **5** | 📋 Planned | eBPF probes (syscall tracing, network monitoring) |
 
@@ -224,6 +261,7 @@ cargo fmt --all -- --check
 | Document | Description |
 |----------|-------------|
 | [Architecture](docs/architecture.md) | Design overview, data flow, workspace layout, design decisions |
+| [MCP Server](docs/mcp-server.md) | MCP server setup, tool list, policy integration, audit logging |
 | [CLI Reference](docs/cli.md) | Every command with flags, arguments, and output examples |
 | [Policy Engine](docs/policy.md) | Rules, roles, capabilities, filters, evaluation algorithm |
 | [Platform API](docs/platform-api.md) | All 36 trait methods with signatures and error handling |

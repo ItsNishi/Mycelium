@@ -1,4 +1,4 @@
-/// Memory queries via /proc/meminfo and /proc/[pid]/status.
+//! Memory queries via /proc/meminfo and /proc/[pid]/status.
 
 use mycelium_core::error::{MyceliumError, Result};
 use mycelium_core::types::{MemoryInfo, ProcessMemory, SwapInfo};

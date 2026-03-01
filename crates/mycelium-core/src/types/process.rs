@@ -1,4 +1,4 @@
-/// Process-related types.
+//! Process-related types.
 
 /// Information about a running process.
 #[derive(Debug, Clone)]

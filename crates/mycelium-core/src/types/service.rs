@@ -1,4 +1,4 @@
-/// Service management types.
+//! Service management types.
 
 /// Information about a system service.
 #[derive(Debug, Clone)]

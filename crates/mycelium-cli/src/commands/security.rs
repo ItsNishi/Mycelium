@@ -42,8 +42,8 @@ impl SecurityCmd {
 impl TableDisplay for UserInfo {
 	fn print_header() {
 		println!(
-			"{:<20} {:>6} {:>6} {:<25} {:<20} {}",
-			"NAME", "UID", "GID", "HOME", "SHELL", "GROUPS"
+			"{:<20} {:>6} {:>6} {:<25} {:<20} GROUPS",
+			"NAME", "UID", "GID", "HOME", "SHELL"
 		);
 	}
 
@@ -62,7 +62,7 @@ impl TableDisplay for UserInfo {
 
 impl TableDisplay for GroupInfo {
 	fn print_header() {
-		println!("{:<20} {:>6} {}", "NAME", "GID", "MEMBERS");
+		println!("{:<20} {:>6} MEMBERS", "NAME", "GID");
 	}
 
 	fn print_row(&self) {
@@ -78,8 +78,8 @@ impl TableDisplay for GroupInfo {
 impl TableDisplay for KernelModule {
 	fn print_header() {
 		println!(
-			"{:<25} {:>12} {:<10} {}",
-			"NAME", "SIZE", "STATE", "USED_BY"
+			"{:<25} {:>12} {:<10} USED_BY",
+			"NAME", "SIZE", "STATE"
 		);
 	}
 
