@@ -54,8 +54,18 @@ impl MyceliumMcpService {
 		tool_name: &str,
 		resource: Option<&str>,
 	) -> Option<Result<CallToolResult, McpError>> {
+		self.check_policy_with_context(tool_name, resource, None)
+	}
+
+	/// Check policy with a full resource context for filter evaluation.
+	pub fn check_policy_with_context(
+		&self,
+		tool_name: &str,
+		resource: Option<&str>,
+		context: Option<&mycelium_core::policy::rule::ResourceContext>,
+	) -> Option<Result<CallToolResult, McpError>> {
 		let effective = self.policy.effective(&self.agent_name);
-		let decision = effective.evaluate(tool_name, None);
+		let decision = effective.evaluate(tool_name, context);
 
 		if !decision.allowed {
 			let reason = decision

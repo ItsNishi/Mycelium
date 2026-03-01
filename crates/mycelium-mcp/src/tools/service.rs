@@ -46,8 +46,14 @@ pub async fn handle_list(svc: &MyceliumMcpService) -> Result<CallToolResult, Mcp
 }
 
 pub async fn handle_status(svc: &MyceliumMcpService, req: NameRequest) -> Result<CallToolResult, McpError> {
+	use mycelium_core::policy::rule::ResourceContext;
+
 	let resource = format!("service:{}", req.name);
-	if let Some(result) = svc.check_policy("service_status", Some(&resource)) {
+	let ctx = ResourceContext {
+		service_name: Some(req.name.clone()),
+		..Default::default()
+	};
+	if let Some(result) = svc.check_policy_with_context("service_status", Some(&resource), Some(&ctx)) {
 		return result;
 	}
 	if svc.is_dry_run() {
@@ -70,10 +76,15 @@ pub async fn handle_status(svc: &MyceliumMcpService, req: NameRequest) -> Result
 }
 
 pub async fn handle_action(svc: &MyceliumMcpService, req: ActionRequest) -> Result<CallToolResult, McpError> {
+	use mycelium_core::policy::rule::ResourceContext;
 	use mycelium_core::types::ServiceAction;
 
 	let resource = format!("service:{}", req.name);
-	if let Some(result) = svc.check_policy("service_action", Some(&resource)) {
+	let ctx = ResourceContext {
+		service_name: Some(req.name.clone()),
+		..Default::default()
+	};
+	if let Some(result) = svc.check_policy_with_context("service_action", Some(&resource), Some(&ctx)) {
 		return result;
 	}
 	if svc.is_dry_run() {

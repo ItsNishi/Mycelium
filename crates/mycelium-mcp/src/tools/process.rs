@@ -46,8 +46,14 @@ pub async fn handle_list(svc: &MyceliumMcpService) -> Result<CallToolResult, Mcp
 }
 
 pub async fn handle_inspect(svc: &MyceliumMcpService, req: PidRequest) -> Result<CallToolResult, McpError> {
+	use mycelium_core::policy::rule::ResourceContext;
+
 	let resource = format!("pid:{}", req.pid);
-	if let Some(result) = svc.check_policy("process_inspect", Some(&resource)) {
+	let ctx = ResourceContext {
+		pid: Some(req.pid),
+		..Default::default()
+	};
+	if let Some(result) = svc.check_policy_with_context("process_inspect", Some(&resource), Some(&ctx)) {
 		return result;
 	}
 	if svc.is_dry_run() {
@@ -70,8 +76,14 @@ pub async fn handle_inspect(svc: &MyceliumMcpService, req: PidRequest) -> Result
 }
 
 pub async fn handle_resources(svc: &MyceliumMcpService, req: PidRequest) -> Result<CallToolResult, McpError> {
+	use mycelium_core::policy::rule::ResourceContext;
+
 	let resource = format!("pid:{}", req.pid);
-	if let Some(result) = svc.check_policy("process_resources", Some(&resource)) {
+	let ctx = ResourceContext {
+		pid: Some(req.pid),
+		..Default::default()
+	};
+	if let Some(result) = svc.check_policy_with_context("process_resources", Some(&resource), Some(&ctx)) {
 		return result;
 	}
 	if svc.is_dry_run() {
@@ -94,10 +106,15 @@ pub async fn handle_resources(svc: &MyceliumMcpService, req: PidRequest) -> Resu
 }
 
 pub async fn handle_kill(svc: &MyceliumMcpService, req: KillRequest) -> Result<CallToolResult, McpError> {
+	use mycelium_core::policy::rule::ResourceContext;
 	use mycelium_core::types::Signal;
 
 	let resource = format!("pid:{}", req.pid);
-	if let Some(result) = svc.check_policy("process_kill", Some(&resource)) {
+	let ctx = ResourceContext {
+		pid: Some(req.pid),
+		..Default::default()
+	};
+	if let Some(result) = svc.check_policy_with_context("process_kill", Some(&resource), Some(&ctx)) {
 		return result;
 	}
 	if svc.is_dry_run() {

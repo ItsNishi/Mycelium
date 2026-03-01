@@ -208,6 +208,13 @@ pub fn read_logs(query: &LogQuery) -> Result<Vec<LogEntry>> {
 	cmd.args(["-n", &limit.to_string()]);
 
 	if let Some(grep) = &query.grep {
+		const MAX_GREP_LEN: usize = 256;
+		if grep.len() > MAX_GREP_LEN {
+			return Err(MyceliumError::ParseError(format!(
+				"grep pattern too long ({} chars, max {MAX_GREP_LEN})",
+				grep.len()
+			)));
+		}
 		cmd.args(["--grep", grep]);
 	}
 

@@ -29,10 +29,15 @@ pub struct LogReadRequest {
 }
 
 pub async fn handle_read(svc: &MyceliumMcpService, req: LogReadRequest) -> Result<CallToolResult, McpError> {
+	use mycelium_core::policy::rule::ResourceContext;
 	use mycelium_core::types::{LogLevel, LogQuery};
 
 	let resource = req.unit.as_deref().map(|u| format!("unit:{u}"));
-	if let Some(result) = svc.check_policy("log_read", resource.as_deref()) {
+	let ctx = ResourceContext {
+		log_source: req.unit.clone(),
+		..Default::default()
+	};
+	if let Some(result) = svc.check_policy_with_context("log_read", resource.as_deref(), Some(&ctx)) {
 		return result;
 	}
 	if svc.is_dry_run() {
