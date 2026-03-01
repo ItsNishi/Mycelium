@@ -1,7 +1,7 @@
-//! Process queries via /proc.
+//! Process queries and control via /proc and signals.
 
 use mycelium_core::error::{MyceliumError, Result};
-use mycelium_core::types::{ProcessInfo, ProcessResource, ProcessState};
+use mycelium_core::types::{ProcessInfo, ProcessResource, ProcessState, Signal};
 use std::fs;
 use std::path::Path;
 
@@ -244,4 +244,32 @@ pub fn process_resources(pid: u32) -> Result<ProcessResource> {
 		read_bytes,
 		write_bytes,
 	})
+}
+
+pub fn kill_process(pid: u32, signal: Signal) -> Result<()> {
+	use nix::errno::Errno;
+
+	let nix_sig = match signal {
+		Signal::Term => nix::sys::signal::Signal::SIGTERM,
+		Signal::Kill => nix::sys::signal::Signal::SIGKILL,
+		Signal::Hup => nix::sys::signal::Signal::SIGHUP,
+		Signal::Int => nix::sys::signal::Signal::SIGINT,
+		Signal::Usr1 => nix::sys::signal::Signal::SIGUSR1,
+		Signal::Usr2 => nix::sys::signal::Signal::SIGUSR2,
+		Signal::Stop => nix::sys::signal::Signal::SIGSTOP,
+		Signal::Cont => nix::sys::signal::Signal::SIGCONT,
+	};
+
+	nix::sys::signal::kill(nix::unistd::Pid::from_raw(pid as i32), nix_sig).map_err(
+		|e| match e {
+			Errno::ESRCH => MyceliumError::NotFound(format!("process {pid}")),
+			Errno::EPERM => MyceliumError::PermissionDenied(format!(
+				"cannot signal process {pid}"
+			)),
+			_ => MyceliumError::OsError {
+				code: e as i32,
+				message: format!("failed to send {signal:?} to pid {pid}: {e}"),
+			},
+		},
+	)
 }

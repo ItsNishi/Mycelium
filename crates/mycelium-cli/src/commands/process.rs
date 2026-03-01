@@ -1,8 +1,35 @@
-use clap::Subcommand;
+use clap::{Subcommand, ValueEnum};
 use mycelium_core::platform::Platform;
-use mycelium_core::types::{ProcessInfo, ProcessResource};
+use mycelium_core::types::{ProcessInfo, ProcessResource, Signal};
 
 use crate::output::*;
+
+#[derive(Clone, ValueEnum)]
+pub enum SignalArg {
+	Term,
+	Kill,
+	Hup,
+	Int,
+	Usr1,
+	Usr2,
+	Stop,
+	Cont,
+}
+
+impl SignalArg {
+	fn to_signal(&self) -> Signal {
+		match self {
+			Self::Term => Signal::Term,
+			Self::Kill => Signal::Kill,
+			Self::Hup => Signal::Hup,
+			Self::Int => Signal::Int,
+			Self::Usr1 => Signal::Usr1,
+			Self::Usr2 => Signal::Usr2,
+			Self::Stop => Signal::Stop,
+			Self::Cont => Signal::Cont,
+		}
+	}
+}
 
 #[derive(Subcommand)]
 pub enum ProcessCmd {
@@ -18,10 +45,18 @@ pub enum ProcessCmd {
 		/// Process ID
 		pid: u32,
 	},
+	/// Send a signal to a process
+	Kill {
+		/// Process ID
+		pid: u32,
+		/// Signal to send
+		#[arg(default_value = "term")]
+		signal: SignalArg,
+	},
 }
 
 impl ProcessCmd {
-	pub fn run(&self, platform: &dyn Platform, format: OutputFormat) {
+	pub fn run(&self, platform: &dyn Platform, format: OutputFormat, dry_run: bool) {
 		match self {
 			Self::List => match platform.list_processes() {
 				Ok(procs) => print_list(&procs, format),
@@ -35,6 +70,17 @@ impl ProcessCmd {
 				Ok(res) => print_output(&res, format),
 				Err(e) => eprintln!("error: {e}"),
 			},
+			Self::Kill { pid, signal } => {
+				let sig = signal.to_signal();
+				if dry_run {
+					println!("[dry-run] would send {sig:?} to process {pid}");
+					return;
+				}
+				match platform.kill_process(*pid, sig) {
+					Ok(()) => println!("sent {sig:?} to process {pid}"),
+					Err(e) => eprintln!("error: {e}"),
+				}
+			}
 		}
 	}
 }

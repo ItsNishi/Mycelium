@@ -429,6 +429,251 @@ fn extract_quoted(line: &str, prefix: &str) -> Option<String> {
 	}
 }
 
+pub fn add_firewall_rule(rule: &FirewallRule) -> Result<()> {
+	let nft_path = Path::new("/usr/sbin/nft");
+	let ipt_path = Path::new("/usr/sbin/iptables");
+
+	if nft_path.exists() {
+		add_nft_rule(rule)
+	} else if ipt_path.exists() {
+		add_iptables_rule(rule)
+	} else {
+		Err(MyceliumError::Unsupported(
+			"neither nft nor iptables found".into(),
+		))
+	}
+}
+
+fn add_nft_rule(rule: &FirewallRule) -> Result<()> {
+	let chain = rule.chain.to_lowercase();
+	let mut args = vec![
+		"add".to_string(),
+		"rule".to_string(),
+		"inet".to_string(),
+		"filter".to_string(),
+		chain,
+	];
+
+	if let Some(proto) = &rule.protocol {
+		args.extend(["ip".into(), "protocol".into(), proto.clone()]);
+	}
+
+	if let Some(src) = &rule.source {
+		args.extend(["ip".into(), "saddr".into(), src.clone()]);
+	}
+
+	if let Some(dst) = &rule.destination {
+		args.extend(["ip".into(), "daddr".into(), dst.clone()]);
+	}
+
+	if let Some(port) = rule.port {
+		// Need protocol for dport; default to tcp if not specified
+		let proto = rule.protocol.as_deref().unwrap_or("tcp");
+		args.extend([proto.into(), "dport".into(), port.to_string()]);
+	}
+
+	let action = match rule.action {
+		FirewallAction::Accept => "accept",
+		FirewallAction::Drop => "drop",
+		FirewallAction::Reject => "reject",
+		FirewallAction::Log => "log",
+	};
+	args.push(action.into());
+
+	if let Some(comment) = &rule.comment {
+		args.extend(["comment".into(), format!("\"{comment}\"")]);
+	}
+
+	let arg_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+	let output = std::process::Command::new("nft")
+		.args(&arg_refs)
+		.output()
+		.map_err(|e| MyceliumError::OsError {
+			code: -1,
+			message: format!("failed to run nft: {e}"),
+		})?;
+
+	if !output.status.success() {
+		let stderr = String::from_utf8_lossy(&output.stderr);
+		return Err(firewall_cmd_error("nft add rule", &stderr, &output));
+	}
+
+	Ok(())
+}
+
+fn add_iptables_rule(rule: &FirewallRule) -> Result<()> {
+	let mut args = vec!["-A".to_string(), rule.chain.clone()];
+
+	if let Some(proto) = &rule.protocol {
+		args.extend(["-p".into(), proto.clone()]);
+	}
+
+	if let Some(src) = &rule.source {
+		args.extend(["-s".into(), src.clone()]);
+	}
+
+	if let Some(dst) = &rule.destination {
+		args.extend(["-d".into(), dst.clone()]);
+	}
+
+	if let Some(port) = rule.port {
+		args.extend(["--dport".into(), port.to_string()]);
+	}
+
+	let action = match rule.action {
+		FirewallAction::Accept => "ACCEPT",
+		FirewallAction::Drop => "DROP",
+		FirewallAction::Reject => "REJECT",
+		FirewallAction::Log => "LOG",
+	};
+	args.extend(["-j".into(), action.into()]);
+
+	if let Some(comment) = &rule.comment {
+		args.extend([
+			"-m".into(),
+			"comment".into(),
+			"--comment".into(),
+			comment.clone(),
+		]);
+	}
+
+	let arg_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+	let output = std::process::Command::new("iptables")
+		.args(&arg_refs)
+		.output()
+		.map_err(|e| MyceliumError::OsError {
+			code: -1,
+			message: format!("failed to run iptables: {e}"),
+		})?;
+
+	if !output.status.success() {
+		let stderr = String::from_utf8_lossy(&output.stderr);
+		return Err(firewall_cmd_error("iptables -A", &stderr, &output));
+	}
+
+	Ok(())
+}
+
+pub fn remove_firewall_rule(rule_id: &str) -> Result<()> {
+	let nft_path = Path::new("/usr/sbin/nft");
+	let ipt_path = Path::new("/usr/sbin/iptables");
+
+	if nft_path.exists() {
+		remove_nft_rule(rule_id)
+	} else if ipt_path.exists() {
+		remove_iptables_rule(rule_id)
+	} else {
+		Err(MyceliumError::Unsupported(
+			"neither nft nor iptables found".into(),
+		))
+	}
+}
+
+/// Find the chain containing a given nft handle by parsing `nft -a list ruleset`.
+fn find_nft_chain_for_handle(handle: &str) -> Result<Option<String>> {
+	let output = std::process::Command::new("nft")
+		.args(["list", "ruleset", "-a"])
+		.output()
+		.map_err(|e| MyceliumError::OsError {
+			code: -1,
+			message: format!("failed to run nft: {e}"),
+		})?;
+
+	if !output.status.success() {
+		return Ok(None);
+	}
+
+	let stdout = String::from_utf8_lossy(&output.stdout);
+	let mut current_chain = String::new();
+	let handle_suffix = format!("handle {handle}");
+
+	for line in stdout.lines() {
+		let trimmed = line.trim();
+		if trimmed.starts_with("chain ") {
+			current_chain = trimmed
+				.strip_prefix("chain ")
+				.unwrap_or("")
+				.trim_end_matches(" {")
+				.trim()
+				.to_string();
+		} else if (trimmed.ends_with(&handle_suffix)
+			|| trimmed.contains(&format!("handle {handle} ")))
+			&& !current_chain.is_empty()
+		{
+			return Ok(Some(current_chain));
+		}
+	}
+
+	Ok(None)
+}
+
+fn remove_nft_rule(rule_id: &str) -> Result<()> {
+	let chain = find_nft_chain_for_handle(rule_id)?.ok_or_else(|| {
+		MyceliumError::NotFound(format!("firewall rule handle {rule_id}"))
+	})?;
+
+	let output = std::process::Command::new("nft")
+		.args([
+			"delete", "rule", "inet", "filter", &chain, "handle", rule_id,
+		])
+		.output()
+		.map_err(|e| MyceliumError::OsError {
+			code: -1,
+			message: format!("failed to run nft: {e}"),
+		})?;
+
+	if !output.status.success() {
+		let stderr = String::from_utf8_lossy(&output.stderr);
+		return Err(firewall_cmd_error("nft delete rule", &stderr, &output));
+	}
+
+	Ok(())
+}
+
+/// rule_id format: "<chain>:<line_number>" or just "<line_number>" (defaults to INPUT).
+fn remove_iptables_rule(rule_id: &str) -> Result<()> {
+	let (chain, num) = if let Some((c, n)) = rule_id.split_once(':') {
+		(c.to_string(), n.to_string())
+	} else {
+		("INPUT".to_string(), rule_id.to_string())
+	};
+
+	let output = std::process::Command::new("iptables")
+		.args(["-D", &chain, &num])
+		.output()
+		.map_err(|e| MyceliumError::OsError {
+			code: -1,
+			message: format!("failed to run iptables: {e}"),
+		})?;
+
+	if !output.status.success() {
+		let stderr = String::from_utf8_lossy(&output.stderr);
+		return Err(firewall_cmd_error("iptables -D", &stderr, &output));
+	}
+
+	Ok(())
+}
+
+fn firewall_cmd_error(
+	cmd: &str,
+	stderr: &str,
+	output: &std::process::Output,
+) -> MyceliumError {
+	let stderr = stderr.trim();
+	if stderr.contains("Permission denied")
+		|| stderr.contains("Operation not permitted")
+	{
+		MyceliumError::PermissionDenied(format!(
+			"{cmd} failed (run as root)"
+		))
+	} else {
+		MyceliumError::OsError {
+			code: output.status.code().unwrap_or(-1),
+			message: format!("{cmd} failed: {stderr}"),
+		}
+	}
+}
+
 fn parse_iptables_rules() -> Result<Vec<FirewallRule>> {
 	let output = std::process::Command::new("iptables-save")
 		.output()

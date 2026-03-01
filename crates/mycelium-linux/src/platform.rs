@@ -34,10 +34,8 @@ impl Platform for LinuxPlatform {
 		crate::process::process_resources(pid)
 	}
 
-	fn kill_process(&self, _pid: u32, _signal: Signal) -> Result<()> {
-		Err(mycelium_core::MyceliumError::Unsupported(
-			"write operations not implemented in Phase 1".into(),
-		))
+	fn kill_process(&self, pid: u32, signal: Signal) -> Result<()> {
+		crate::process::kill_process(pid, signal)
 	}
 
 	// -- Memory --
@@ -72,16 +70,12 @@ impl Platform for LinuxPlatform {
 		crate::network::list_firewall_rules()
 	}
 
-	fn add_firewall_rule(&self, _rule: &FirewallRule) -> Result<()> {
-		Err(mycelium_core::MyceliumError::Unsupported(
-			"write operations not implemented in Phase 1".into(),
-		))
+	fn add_firewall_rule(&self, rule: &FirewallRule) -> Result<()> {
+		crate::network::add_firewall_rule(rule)
 	}
 
-	fn remove_firewall_rule(&self, _rule_id: &str) -> Result<()> {
-		Err(mycelium_core::MyceliumError::Unsupported(
-			"write operations not implemented in Phase 1".into(),
-		))
+	fn remove_firewall_rule(&self, rule_id: &str) -> Result<()> {
+		crate::network::remove_firewall_rule(rule_id)
 	}
 
 	// -- Storage --
@@ -130,10 +124,8 @@ impl Platform for LinuxPlatform {
 		crate::tuning::list_tunables(prefix)
 	}
 
-	fn set_tunable(&self, _key: &str, _value: &TunableValue) -> Result<TunableValue> {
-		Err(mycelium_core::MyceliumError::Unsupported(
-			"write operations not implemented in Phase 1".into(),
-		))
+	fn set_tunable(&self, key: &str, value: &TunableValue) -> Result<TunableValue> {
+		crate::tuning::set_tunable(key, value)
 	}
 
 	// -- Services --
@@ -146,10 +138,8 @@ impl Platform for LinuxPlatform {
 		crate::service::service_status(name)
 	}
 
-	fn service_action(&self, _name: &str, _action: ServiceAction) -> Result<()> {
-		Err(mycelium_core::MyceliumError::Unsupported(
-			"write operations not implemented in Phase 1".into(),
-		))
+	fn service_action(&self, name: &str, action: ServiceAction) -> Result<()> {
+		crate::service::service_action(name, action)
 	}
 
 	// -- Logs --

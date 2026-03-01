@@ -83,14 +83,16 @@ fn main() {
 		std::process::exit(1);
 	}
 
+	let dry_run = cli.dry_run;
+
 	match cli.command {
-		Command::Process(cmd) => cmd.run(&platform, format),
+		Command::Process(cmd) => cmd.run(&platform, format, dry_run),
 		Command::Memory(cmd) => cmd.run(&platform, format),
-		Command::Network(cmd) => cmd.run(&platform, format),
+		Command::Network(cmd) => cmd.run(&platform, format, dry_run),
 		Command::Storage(cmd) => cmd.run(&platform, format),
 		Command::System(cmd) => cmd.run(&platform, format),
-		Command::Tuning(cmd) => cmd.run(&platform, format),
-		Command::Service(cmd) => cmd.run(&platform, format),
+		Command::Tuning(cmd) => cmd.run(&platform, format, dry_run),
+		Command::Service(cmd) => cmd.run(&platform, format, dry_run),
 		Command::Log(cmd) => cmd.run(&platform, format),
 		Command::Security(cmd) => cmd.run(&platform, format),
 		Command::Policy(cmd) => cmd.run(format),

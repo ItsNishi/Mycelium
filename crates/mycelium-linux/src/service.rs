@@ -120,6 +120,60 @@ pub fn service_status(name: &str) -> Result<ServiceInfo> {
 	Ok(info)
 }
 
+pub fn service_action(name: &str, action: ServiceAction) -> Result<()> {
+	let verb = match action {
+		ServiceAction::Start => "start",
+		ServiceAction::Stop => "stop",
+		ServiceAction::Restart => "restart",
+		ServiceAction::Reload => "reload",
+		ServiceAction::Enable => "enable",
+		ServiceAction::Disable => "disable",
+	};
+
+	let unit = if name.ends_with(".service") {
+		name.to_string()
+	} else {
+		format!("{name}.service")
+	};
+
+	let output = Command::new("systemctl")
+		.args([verb, &unit])
+		.output()
+		.map_err(|e| MyceliumError::OsError {
+			code: -1,
+			message: format!("failed to run systemctl {verb}: {e}"),
+		})?;
+
+	if !output.status.success() {
+		let stderr = String::from_utf8_lossy(&output.stderr);
+		let stderr = stderr.trim();
+
+		if stderr.contains("Access denied")
+			|| stderr.contains("Permission denied")
+			|| stderr.contains("authentication required")
+			|| stderr.contains("not privileged")
+		{
+			return Err(MyceliumError::PermissionDenied(format!(
+				"cannot {verb} {name} (run as root)"
+			)));
+		}
+
+		if stderr.contains("not found")
+			|| stderr.contains("No such file")
+			|| stderr.contains("not loaded")
+		{
+			return Err(MyceliumError::NotFound(format!("service {name}")));
+		}
+
+		return Err(MyceliumError::OsError {
+			code: output.status.code().unwrap_or(-1),
+			message: format!("systemctl {verb} {name} failed: {stderr}"),
+		});
+	}
+
+	Ok(())
+}
+
 pub fn read_logs(query: &LogQuery) -> Result<Vec<LogEntry>> {
 	let mut cmd = Command::new("journalctl");
 	cmd.args(["--no-pager", "--output=short-unix"]);

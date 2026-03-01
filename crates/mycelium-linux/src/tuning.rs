@@ -100,3 +100,45 @@ fn collect_tunables(path: &Path, out: &mut Vec<TunableParam>) {
 		}
 	}
 }
+
+pub fn set_tunable(key: &str, value: &TunableValue) -> Result<TunableValue> {
+	let path = sysctl_path(key);
+
+	if !path.exists() {
+		return Err(MyceliumError::NotFound(format!("tunable {key}")));
+	}
+
+	if !path.is_file() {
+		return Err(MyceliumError::ParseError(format!(
+			"{key} is a directory, not a tunable"
+		)));
+	}
+
+	// Read the previous value before writing
+	let previous = {
+		let content = fs::read_to_string(&path).map_err(|e| {
+			if e.kind() == std::io::ErrorKind::PermissionDenied {
+				MyceliumError::PermissionDenied(format!("cannot read {key}"))
+			} else {
+				MyceliumError::IoError(e)
+			}
+		})?;
+		parse_value(&content)
+	};
+
+	let write_str = match value {
+		TunableValue::String(s) => s.clone(),
+		TunableValue::Integer(n) => n.to_string(),
+		TunableValue::Boolean(b) => if *b { "1" } else { "0" }.to_string(),
+	};
+
+	fs::write(&path, format!("{write_str}\n")).map_err(|e| {
+		if e.kind() == std::io::ErrorKind::PermissionDenied {
+			MyceliumError::PermissionDenied(format!("cannot write {key} (run as root)"))
+		} else {
+			MyceliumError::IoError(e)
+		}
+	})?;
+
+	Ok(previous)
+}

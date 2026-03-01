@@ -1,8 +1,27 @@
-use clap::Subcommand;
+use clap::{Subcommand, ValueEnum};
 use mycelium_core::platform::Platform;
 use mycelium_core::types::*;
 
 use crate::output::*;
+
+#[derive(Clone, ValueEnum)]
+pub enum FirewallActionArg {
+	Accept,
+	Drop,
+	Reject,
+	Log,
+}
+
+impl FirewallActionArg {
+	fn to_action(&self) -> FirewallAction {
+		match self {
+			Self::Accept => FirewallAction::Accept,
+			Self::Drop => FirewallAction::Drop,
+			Self::Reject => FirewallAction::Reject,
+			Self::Log => FirewallAction::Log,
+		}
+	}
+}
 
 #[derive(Subcommand)]
 pub enum NetworkCmd {
@@ -16,10 +35,39 @@ pub enum NetworkCmd {
 	Ports,
 	/// List firewall rules
 	Firewall,
+	/// Add a firewall rule
+	FirewallAdd {
+		/// Chain (e.g. input, output, forward)
+		#[arg(long)]
+		chain: String,
+		/// Action to take
+		#[arg(long)]
+		action: FirewallActionArg,
+		/// Protocol (tcp, udp)
+		#[arg(long)]
+		protocol: Option<String>,
+		/// Source address/CIDR
+		#[arg(long)]
+		source: Option<String>,
+		/// Destination address/CIDR
+		#[arg(long)]
+		destination: Option<String>,
+		/// Destination port
+		#[arg(long)]
+		port: Option<u16>,
+		/// Rule comment
+		#[arg(long)]
+		comment: Option<String>,
+	},
+	/// Remove a firewall rule by ID
+	FirewallRemove {
+		/// Rule ID (nft handle or iptables chain:num)
+		rule_id: String,
+	},
 }
 
 impl NetworkCmd {
-	pub fn run(&self, platform: &dyn Platform, format: OutputFormat) {
+	pub fn run(&self, platform: &dyn Platform, format: OutputFormat, dry_run: bool) {
 		match self {
 			Self::Interfaces => match platform.list_interfaces() {
 				Ok(ifaces) => print_list(&ifaces, format),
@@ -41,6 +89,47 @@ impl NetworkCmd {
 				Ok(rules) => print_list(&rules, format),
 				Err(e) => eprintln!("error: {e}"),
 			},
+			Self::FirewallAdd {
+				chain,
+				action,
+				protocol,
+				source,
+				destination,
+				port,
+				comment,
+			} => {
+				let rule = FirewallRule {
+					id: String::new(),
+					chain: chain.clone(),
+					protocol: protocol.clone(),
+					source: source.clone(),
+					destination: destination.clone(),
+					port: *port,
+					action: action.to_action(),
+					comment: comment.clone(),
+				};
+				if dry_run {
+					println!(
+						"[dry-run] would add firewall rule: chain={} action={:?}",
+						chain, rule.action
+					);
+					return;
+				}
+				match platform.add_firewall_rule(&rule) {
+					Ok(()) => println!("firewall rule added to chain {chain}"),
+					Err(e) => eprintln!("error: {e}"),
+				}
+			}
+			Self::FirewallRemove { rule_id } => {
+				if dry_run {
+					println!("[dry-run] would remove firewall rule {rule_id}");
+					return;
+				}
+				match platform.remove_firewall_rule(rule_id) {
+					Ok(()) => println!("firewall rule {rule_id} removed"),
+					Err(e) => eprintln!("error: {e}"),
+				}
+			}
 		}
 	}
 }
