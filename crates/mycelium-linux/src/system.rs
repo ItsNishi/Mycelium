@@ -34,11 +34,7 @@ pub fn system_info() -> Result<SystemInfo> {
 	})
 }
 
-fn parse_os_release() -> (String, String) {
-	let content = fs::read_to_string("/etc/os-release")
-		.or_else(|_| fs::read_to_string("/usr/lib/os-release"))
-		.unwrap_or_default();
-
+fn parse_os_release_content(content: &str) -> (String, String) {
 	let mut name = "Linux".to_string();
 	let mut version = String::new();
 
@@ -51,6 +47,13 @@ fn parse_os_release() -> (String, String) {
 	}
 
 	(name, version)
+}
+
+fn parse_os_release() -> (String, String) {
+	let content = fs::read_to_string("/etc/os-release")
+		.or_else(|_| fs::read_to_string("/usr/lib/os-release"))
+		.unwrap_or_default();
+	parse_os_release_content(&content)
 }
 
 pub fn kernel_info() -> Result<KernelInfo> {
@@ -136,8 +139,7 @@ pub fn cpu_info() -> Result<CpuInfo> {
 	})
 }
 
-fn cpu_usage_snapshot() -> f64 {
-	let content = fs::read_to_string("/proc/stat").unwrap_or_default();
+fn parse_cpu_usage(content: &str) -> f64 {
 	let Some(cpu_line) = content.lines().find(|l| l.starts_with("cpu ")) else {
 		return 0.0;
 	};
@@ -163,12 +165,98 @@ fn cpu_usage_snapshot() -> f64 {
 	}
 }
 
-pub fn uptime() -> Result<u64> {
-	let content = fs::read_to_string("/proc/uptime")?;
+fn cpu_usage_snapshot() -> f64 {
+	let content = fs::read_to_string("/proc/stat").unwrap_or_default();
+	parse_cpu_usage(&content)
+}
+
+fn parse_uptime_content(content: &str) -> u64 {
 	let secs: f64 = content
 		.split_whitespace()
 		.next()
 		.and_then(|s| s.parse().ok())
 		.unwrap_or(0.0);
-	Ok(secs as u64)
+	secs as u64
+}
+
+pub fn uptime() -> Result<u64> {
+	let content = fs::read_to_string("/proc/uptime")?;
+	Ok(parse_uptime_content(&content))
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	// parse_os_release_content tests
+
+	#[test]
+	fn test_os_release_quoted() {
+		let content = "NAME=\"openSUSE Tumbleweed\"\nVERSION=\"20260301\"\n";
+		let (name, version) = parse_os_release_content(content);
+		assert_eq!(name, "openSUSE Tumbleweed");
+		assert_eq!(version, "20260301");
+	}
+
+	#[test]
+	fn test_os_release_unquoted() {
+		let content = "NAME=Arch\nVERSION=rolling\n";
+		let (name, version) = parse_os_release_content(content);
+		assert_eq!(name, "Arch");
+		assert_eq!(version, "rolling");
+	}
+
+	#[test]
+	fn test_os_release_missing_version() {
+		let content = "NAME=\"Ubuntu\"\nID=ubuntu\n";
+		let (name, version) = parse_os_release_content(content);
+		assert_eq!(name, "Ubuntu");
+		assert_eq!(version, "");
+	}
+
+	#[test]
+	fn test_os_release_empty() {
+		let (name, version) = parse_os_release_content("");
+		assert_eq!(name, "Linux");
+		assert_eq!(version, "");
+	}
+
+	// parse_cpu_usage tests
+
+	#[test]
+	fn test_cpu_usage_normal() {
+		let content = "cpu  100 50 50 800 0 0 0 0 0 0\ncpu0 50 25 25 400 0 0 0 0 0 0\n";
+		let usage = parse_cpu_usage(content);
+		// busy = 100+50+50 = 200, total = 1000, usage = 20%
+		assert!((usage - 20.0).abs() < 0.01);
+	}
+
+	#[test]
+	fn test_cpu_usage_all_zeros() {
+		let content = "cpu  0 0 0 0 0 0 0 0 0 0\n";
+		assert_eq!(parse_cpu_usage(content), 0.0);
+	}
+
+	#[test]
+	fn test_cpu_usage_no_cpu_line() {
+		let content = "intr 12345 0 0 0\n";
+		assert_eq!(parse_cpu_usage(content), 0.0);
+	}
+
+	// parse_uptime_content tests
+
+	#[test]
+	fn test_uptime_normal() {
+		assert_eq!(parse_uptime_content("12345.67 45678.90\n"), 12345);
+	}
+
+	#[test]
+	fn test_uptime_zero() {
+		assert_eq!(parse_uptime_content("0.00 0.00\n"), 0);
+	}
+
+	#[test]
+	fn test_uptime_empty() {
+		assert_eq!(parse_uptime_content(""), 0);
+	}
 }

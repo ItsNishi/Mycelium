@@ -82,8 +82,14 @@ pub async fn handle_process(svc: &MyceliumMcpService, req: PidRequest) -> Result
 }
 
 pub async fn handle_maps(svc: &MyceliumMcpService, req: PidRequest) -> Result<CallToolResult, McpError> {
+	use mycelium_core::policy::rule::ResourceContext;
+
 	let resource = format!("pid:{}", req.pid);
-	if let Some(result) = svc.check_policy("memory_maps", Some(&resource)) {
+	let ctx = ResourceContext {
+		pid: Some(req.pid),
+		..Default::default()
+	};
+	if let Some(result) = svc.check_policy_with_context("memory_maps", Some(&resource), Some(&ctx)) {
 		return result;
 	}
 	if svc.is_dry_run() {
@@ -106,8 +112,14 @@ pub async fn handle_maps(svc: &MyceliumMcpService, req: PidRequest) -> Result<Ca
 }
 
 pub async fn handle_read(svc: &MyceliumMcpService, req: MemoryReadRequest) -> Result<CallToolResult, McpError> {
+	use mycelium_core::policy::rule::ResourceContext;
+
 	let resource = format!("pid:{}:addr:{:#x}:size:{}", req.pid, req.address, req.size);
-	if let Some(result) = svc.check_policy("memory_read", Some(&resource)) {
+	let ctx = ResourceContext {
+		pid: Some(req.pid),
+		..Default::default()
+	};
+	if let Some(result) = svc.check_policy_with_context("memory_read", Some(&resource), Some(&ctx)) {
 		return result;
 	}
 	if svc.is_dry_run() {
@@ -133,8 +145,14 @@ pub async fn handle_read(svc: &MyceliumMcpService, req: MemoryReadRequest) -> Re
 }
 
 pub async fn handle_write(svc: &MyceliumMcpService, req: MemoryWriteRequest) -> Result<CallToolResult, McpError> {
+	use mycelium_core::policy::rule::ResourceContext;
+
 	let resource = format!("pid:{}:addr:{:#x}", req.pid, req.address);
-	if let Some(result) = svc.check_policy("memory_write", Some(&resource)) {
+	let ctx = ResourceContext {
+		pid: Some(req.pid),
+		..Default::default()
+	};
+	if let Some(result) = svc.check_policy_with_context("memory_write", Some(&resource), Some(&ctx)) {
 		return result;
 	}
 	if svc.is_dry_run() {
@@ -175,4 +193,32 @@ fn hex_decode(s: &str) -> std::result::Result<Vec<u8>, String> {
 				.map_err(|e| format!("invalid hex at position {i}: {e}"))
 		})
 		.collect()
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn test_hex_decode_normal() {
+		assert_eq!(
+			hex_decode("4141ff00").unwrap(),
+			vec![0x41, 0x41, 0xff, 0x00]
+		);
+	}
+
+	#[test]
+	fn test_hex_decode_0x_prefix() {
+		assert_eq!(hex_decode("0x4141").unwrap(), vec![0x41, 0x41]);
+	}
+
+	#[test]
+	fn test_hex_decode_odd_length() {
+		assert!(hex_decode("414").is_err());
+	}
+
+	#[test]
+	fn test_hex_decode_invalid_chars() {
+		assert!(hex_decode("gg00").is_err());
+	}
 }

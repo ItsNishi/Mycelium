@@ -88,6 +88,37 @@ pub fn process_memory(pid: u32) -> Result<ProcessMemory> {
 	})
 }
 
+/// Parse a single line from `/proc/<pid>/maps` into a memory region.
+fn parse_maps_line(line: &str) -> Option<MemoryRegion> {
+	let mut parts = line.splitn(6, char::is_whitespace);
+
+	let range = parts.next().filter(|s| !s.is_empty())?;
+	let permissions = parts.next().unwrap_or("").to_string();
+	let offset_str = parts.next().unwrap_or("0");
+	let device = parts.next().unwrap_or("").to_string();
+	let inode_str = parts.next().unwrap_or("0");
+	let pathname = parts
+		.next()
+		.map(|s| s.trim().to_string())
+		.filter(|s| !s.is_empty());
+
+	let (start_str, end_str) = range.split_once('-')?;
+	let start_address = u64::from_str_radix(start_str, 16).unwrap_or(0);
+	let end_address = u64::from_str_radix(end_str, 16).unwrap_or(0);
+	let offset = u64::from_str_radix(offset_str, 16).unwrap_or(0);
+	let inode = inode_str.parse::<u64>().unwrap_or(0);
+
+	Some(MemoryRegion {
+		start_address,
+		end_address,
+		permissions,
+		offset,
+		device,
+		inode,
+		pathname,
+	})
+}
+
 /// Parse `/proc/<pid>/maps` into a list of memory regions.
 pub fn process_memory_maps(pid: u32) -> Result<Vec<MemoryRegion>> {
 	let maps_path = format!("/proc/{pid}/maps");
@@ -102,34 +133,7 @@ pub fn process_memory_maps(pid: u32) -> Result<Vec<MemoryRegion>> {
 		_ => MyceliumError::IoError(e),
 	})?;
 
-	let mut regions = Vec::new();
-	for line in content.lines() {
-		let mut parts = line.splitn(6, char::is_whitespace);
-
-		let range = parts.next().unwrap_or("");
-		let permissions = parts.next().unwrap_or("").to_string();
-		let offset_str = parts.next().unwrap_or("0");
-		let device = parts.next().unwrap_or("").to_string();
-		let inode_str = parts.next().unwrap_or("0");
-		let pathname = parts.next().map(|s| s.trim().to_string()).filter(|s| !s.is_empty());
-
-		let (start_str, end_str) = range.split_once('-').unwrap_or(("0", "0"));
-		let start_address = u64::from_str_radix(start_str, 16).unwrap_or(0);
-		let end_address = u64::from_str_radix(end_str, 16).unwrap_or(0);
-		let offset = u64::from_str_radix(offset_str, 16).unwrap_or(0);
-		let inode = inode_str.parse::<u64>().unwrap_or(0);
-
-		regions.push(MemoryRegion {
-			start_address,
-			end_address,
-			permissions,
-			offset,
-			device,
-			inode,
-			pathname,
-		});
-	}
-
+	let regions = content.lines().filter_map(parse_maps_line).collect();
 	Ok(regions)
 }
 
@@ -187,9 +191,22 @@ pub fn read_process_memory(pid: u32, address: u64, size: usize) -> Result<Vec<u8
 	Ok(buf)
 }
 
+/// Maximum bytes allowed per write_process_memory call (1 MiB).
+const MAX_WRITE_SIZE: usize = 1_048_576;
+
 /// Write raw bytes to a process's virtual memory via `/proc/<pid>/mem`.
 /// Returns the number of bytes written.
 pub fn write_process_memory(pid: u32, address: u64, data: &[u8]) -> Result<usize> {
+	if data.len() > MAX_WRITE_SIZE {
+		return Err(MyceliumError::OsError {
+			code: 0,
+			message: format!(
+				"requested write size {} exceeds maximum {MAX_WRITE_SIZE} bytes (1 MiB)",
+				data.len()
+			),
+		});
+	}
+
 	let mem_path = format!("/proc/{pid}/mem");
 	if !Path::new(&format!("/proc/{pid}")).exists() {
 		return Err(MyceliumError::NotFound(format!("process {pid}")));
@@ -231,4 +248,102 @@ pub fn write_process_memory(pid: u32, address: u64, data: &[u8]) -> Result<usize
 	})?;
 
 	Ok(data.len())
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	// parse_meminfo_kb tests
+
+	#[test]
+	fn test_parse_meminfo_kb_normal() {
+		let content = "MemTotal:       16384000 kB\nMemFree:         8192000 kB\n";
+		assert_eq!(parse_meminfo_kb(content, "MemTotal:"), 16384000);
+		assert_eq!(parse_meminfo_kb(content, "MemFree:"), 8192000);
+	}
+
+	#[test]
+	fn test_parse_meminfo_kb_key_not_found() {
+		let content = "MemTotal:       16384000 kB\n";
+		assert_eq!(parse_meminfo_kb(content, "MemFree:"), 0);
+	}
+
+	#[test]
+	fn test_parse_meminfo_kb_non_numeric() {
+		let content = "MemTotal:       abc kB\n";
+		assert_eq!(parse_meminfo_kb(content, "MemTotal:"), 0);
+	}
+
+	#[test]
+	fn test_parse_meminfo_kb_substring_key() {
+		// "MemTotal:" should not match "MemTotalHuge:" because starts_with is exact
+		let content = "MemTotalHuge:   1024 kB\nMemTotal:       16384000 kB\n";
+		assert_eq!(parse_meminfo_kb(content, "MemTotal:"), 16384000);
+	}
+
+	// parse_maps_line tests
+
+	#[test]
+	fn test_parse_maps_line_full_mapped_file() {
+		let line = "7f0e12345000-7f0e12346000 r-xp 00000000 08:01 12345  /usr/lib/libc.so.6";
+		let region = parse_maps_line(line).unwrap();
+		assert_eq!(region.start_address, 0x7f0e12345000);
+		assert_eq!(region.end_address, 0x7f0e12346000);
+		assert_eq!(region.permissions, "r-xp");
+		assert_eq!(region.offset, 0);
+		assert_eq!(region.device, "08:01");
+		assert_eq!(region.inode, 12345);
+		assert_eq!(region.pathname.as_deref(), Some("/usr/lib/libc.so.6"));
+	}
+
+	#[test]
+	fn test_parse_maps_line_anonymous() {
+		let line = "7f0e12345000-7f0e12346000 rw-p 00000000 00:00 0";
+		let region = parse_maps_line(line).unwrap();
+		assert_eq!(region.permissions, "rw-p");
+		assert_eq!(region.inode, 0);
+		assert!(region.pathname.is_none());
+	}
+
+	#[test]
+	fn test_parse_maps_line_stack() {
+		let line =
+			"7ffd12345000-7ffd12366000 rw-p 00000000 00:00 0                          [stack]";
+		let region = parse_maps_line(line).unwrap();
+		assert_eq!(region.pathname.as_deref(), Some("[stack]"));
+	}
+
+	#[test]
+	fn test_parse_maps_line_heap() {
+		let line =
+			"55a012345000-55a012366000 rw-p 00000000 00:00 0                          [heap]";
+		let region = parse_maps_line(line).unwrap();
+		assert_eq!(region.pathname.as_deref(), Some("[heap]"));
+	}
+
+	#[test]
+	fn test_parse_maps_line_pathname_with_spaces() {
+		let line = "7f0e12345000-7f0e12346000 r-xp 00000000 08:01 12345  /opt/My App/lib.so";
+		let region = parse_maps_line(line).unwrap();
+		assert_eq!(region.pathname.as_deref(), Some("/opt/My App/lib.so"));
+	}
+
+	#[test]
+	fn test_parse_maps_line_empty() {
+		assert!(parse_maps_line("").is_none());
+	}
+
+	#[test]
+	fn test_parse_maps_line_no_dash_in_range() {
+		let line = "7f0e12345000 r-xp 00000000 08:01 12345";
+		assert!(parse_maps_line(line).is_none());
+	}
+
+	#[test]
+	fn test_parse_maps_line_with_offset() {
+		let line = "7f0e12345000-7f0e12346000 r--p 0001f000 08:01 12345  /usr/lib/libc.so.6";
+		let region = parse_maps_line(line).unwrap();
+		assert_eq!(region.offset, 0x1f000);
+	}
 }

@@ -19,19 +19,8 @@ fn total_memory_bytes() -> u64 {
 		.unwrap_or(1)
 }
 
-/// Parse /proc/[pid]/stat into fields.
-fn parse_stat(pid: u32) -> Result<Vec<String>> {
-	let path = format!("/proc/{pid}/stat");
-	let content = fs::read_to_string(&path).map_err(|e| {
-		if e.kind() == std::io::ErrorKind::NotFound {
-			MyceliumError::NotFound(format!("process {pid}"))
-		} else if e.kind() == std::io::ErrorKind::PermissionDenied {
-			MyceliumError::PermissionDenied(format!("cannot read {path}"))
-		} else {
-			MyceliumError::IoError(e)
-		}
-	})?;
-
+/// Parse the content of a /proc/[pid]/stat file into fields.
+fn parse_stat_content(content: &str, pid: u32) -> Result<Vec<String>> {
 	// comm field can contain spaces and parens, so parse around it
 	let open = content
 		.find('(')
@@ -47,6 +36,21 @@ fn parse_stat(pid: u32) -> Result<Vec<String>> {
 		fields.push(field.to_string());
 	}
 	Ok(fields)
+}
+
+/// Parse /proc/[pid]/stat into fields.
+fn parse_stat(pid: u32) -> Result<Vec<String>> {
+	let path = format!("/proc/{pid}/stat");
+	let content = fs::read_to_string(&path).map_err(|e| {
+		if e.kind() == std::io::ErrorKind::NotFound {
+			MyceliumError::NotFound(format!("process {pid}"))
+		} else if e.kind() == std::io::ErrorKind::PermissionDenied {
+			MyceliumError::PermissionDenied(format!("cannot read {path}"))
+		} else {
+			MyceliumError::IoError(e)
+		}
+	})?;
+	parse_stat_content(&content, pid)
 }
 
 fn parse_state(ch: &str) -> ProcessState {
@@ -93,11 +97,28 @@ fn thread_count(pid: u32) -> u32 {
 		.unwrap_or(1)
 }
 
+fn parse_cmdline_content(content: &str) -> String {
+	content.replace('\0', " ").trim().to_string()
+}
+
 fn cmdline(pid: u32) -> String {
 	fs::read_to_string(format!("/proc/{pid}/cmdline"))
 		.ok()
-		.map(|s| s.replace('\0', " ").trim().to_string())
+		.map(|s| parse_cmdline_content(&s))
 		.unwrap_or_default()
+}
+
+fn parse_proc_io(content: &str) -> (u64, u64) {
+	let mut rb = 0u64;
+	let mut wb = 0u64;
+	for line in content.lines() {
+		if let Some(v) = line.strip_prefix("read_bytes: ") {
+			rb = v.trim().parse().unwrap_or(0);
+		} else if let Some(v) = line.strip_prefix("write_bytes: ") {
+			wb = v.trim().parse().unwrap_or(0);
+		}
+	}
+	(rb, wb)
 }
 
 fn rss_bytes_from_stat(fields: &[String]) -> u64 {
@@ -215,18 +236,7 @@ pub fn process_resources(pid: u32) -> Result<ProcessResource> {
 	let (read_bytes, write_bytes) =
 		fs::read_to_string(format!("/proc/{pid}/io"))
 			.ok()
-			.map(|s| {
-				let mut rb = 0u64;
-				let mut wb = 0u64;
-				for line in s.lines() {
-					if let Some(v) = line.strip_prefix("read_bytes: ") {
-						rb = v.trim().parse().unwrap_or(0);
-					} else if let Some(v) = line.strip_prefix("write_bytes: ") {
-						wb = v.trim().parse().unwrap_or(0);
-					}
-				}
-				(rb, wb)
-			})
+			.map(|s| parse_proc_io(&s))
 			.unwrap_or((0, 0));
 
 	Ok(ProcessResource {
@@ -248,6 +258,17 @@ pub fn process_resources(pid: u32) -> Result<ProcessResource> {
 
 pub fn kill_process(pid: u32, signal: Signal) -> Result<()> {
 	use nix::errno::Errno;
+
+	if pid == 0 {
+		return Err(MyceliumError::ParseError(
+			"cannot signal PID 0 (kernel scheduler)".into(),
+		));
+	}
+	if pid > i32::MAX as u32 {
+		return Err(MyceliumError::ParseError(format!(
+			"PID {pid} exceeds maximum valid PID"
+		)));
+	}
 
 	let nix_sig = match signal {
 		Signal::Term => nix::sys::signal::Signal::SIGTERM,
@@ -272,4 +293,143 @@ pub fn kill_process(pid: u32, signal: Signal) -> Result<()> {
 			},
 		},
 	)
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	// parse_stat_content tests
+
+	#[test]
+	fn test_parse_stat_content_normal() {
+		let content = "42 (bash) S 1 42 42 0 -1 4194560 1234 0 0 0 10 5 0 0 20 0 1 0 \
+			100 12345678 500 18446744073709551615";
+		let fields = parse_stat_content(content, 42).unwrap();
+		assert_eq!(fields[0], "42");
+		assert_eq!(fields[1], "bash");
+		assert_eq!(fields[2], "S");
+	}
+
+	#[test]
+	fn test_parse_stat_content_name_with_spaces() {
+		let content = "42 (Web Content) S 1 42 42 0 -1 4194560";
+		let fields = parse_stat_content(content, 42).unwrap();
+		assert_eq!(fields[0], "42");
+		assert_eq!(fields[1], "Web Content");
+		assert_eq!(fields[2], "S");
+	}
+
+	#[test]
+	fn test_parse_stat_content_nested_parens() {
+		let content = "99 (kworker/0:1 (idle)) S 2 0 0 0 -1 69238880";
+		let fields = parse_stat_content(content, 99).unwrap();
+		assert_eq!(fields[0], "99");
+		assert_eq!(fields[1], "kworker/0:1 (idle)");
+		assert_eq!(fields[2], "S");
+	}
+
+	#[test]
+	fn test_parse_stat_content_missing_parens() {
+		let content = "42 bash S 1 42";
+		assert!(parse_stat_content(content, 42).is_err());
+	}
+
+	#[test]
+	fn test_parse_stat_content_empty() {
+		assert!(parse_stat_content("", 1).is_err());
+	}
+
+	// parse_state tests
+
+	#[test]
+	fn test_parse_state_all_valid() {
+		assert_eq!(parse_state("R"), ProcessState::Running);
+		assert_eq!(parse_state("S"), ProcessState::Sleeping);
+		assert_eq!(parse_state("D"), ProcessState::DiskSleep);
+		assert_eq!(parse_state("T"), ProcessState::Stopped);
+		assert_eq!(parse_state("t"), ProcessState::Stopped);
+		assert_eq!(parse_state("Z"), ProcessState::Zombie);
+		assert_eq!(parse_state("X"), ProcessState::Dead);
+		assert_eq!(parse_state("x"), ProcessState::Dead);
+	}
+
+	#[test]
+	fn test_parse_state_unknown() {
+		assert_eq!(parse_state("Q"), ProcessState::Unknown);
+	}
+
+	#[test]
+	fn test_parse_state_empty() {
+		assert_eq!(parse_state(""), ProcessState::Unknown);
+	}
+
+	// parse_cmdline_content tests
+
+	#[test]
+	fn test_parse_cmdline_content_normal() {
+		assert_eq!(
+			parse_cmdline_content("/usr/bin/bash\0-l\0"),
+			"/usr/bin/bash -l"
+		);
+	}
+
+	#[test]
+	fn test_parse_cmdline_content_empty() {
+		assert_eq!(parse_cmdline_content(""), "");
+	}
+
+	// parse_proc_io tests
+
+	#[test]
+	fn test_parse_proc_io_normal() {
+		let content = "\
+			rchar: 100\n\
+			wchar: 200\n\
+			syscr: 10\n\
+			syscw: 20\n\
+			read_bytes: 4096\n\
+			write_bytes: 8192\n\
+			cancelled_write_bytes: 0\n";
+		assert_eq!(parse_proc_io(content), (4096, 8192));
+	}
+
+	#[test]
+	fn test_parse_proc_io_missing_fields() {
+		assert_eq!(parse_proc_io("rchar: 100\nwchar: 200\n"), (0, 0));
+	}
+
+	#[test]
+	fn test_parse_proc_io_non_numeric() {
+		assert_eq!(
+			parse_proc_io("read_bytes: abc\nwrite_bytes: def\n"),
+			(0, 0)
+		);
+	}
+
+	// rss_bytes_from_stat tests
+
+	#[test]
+	fn test_rss_bytes_from_stat_normal() {
+		let page_size = nix::unistd::sysconf(nix::unistd::SysconfVar::PAGE_SIZE)
+			.ok()
+			.flatten()
+			.unwrap_or(4096) as u64;
+		let mut fields: Vec<String> = (0..52).map(|i| i.to_string()).collect();
+		fields[23] = "100".to_string();
+		assert_eq!(rss_bytes_from_stat(&fields), 100 * page_size);
+	}
+
+	#[test]
+	fn test_rss_bytes_from_stat_short_vec() {
+		let fields: Vec<String> = vec!["1".into(), "bash".into(), "S".into()];
+		assert_eq!(rss_bytes_from_stat(&fields), 0);
+	}
+
+	#[test]
+	fn test_rss_bytes_from_stat_non_numeric() {
+		let mut fields: Vec<String> = (0..52).map(|i| i.to_string()).collect();
+		fields[23] = "not_a_number".to_string();
+		assert_eq!(rss_bytes_from_stat(&fields), 0);
+	}
 }

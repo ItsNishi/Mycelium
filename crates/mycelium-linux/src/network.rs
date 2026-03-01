@@ -429,7 +429,108 @@ fn extract_quoted(line: &str, prefix: &str) -> Option<String> {
 	}
 }
 
+const VALID_PROTOCOLS: &[&str] = &[
+	"tcp", "udp", "icmp", "icmpv6", "sctp", "dccp", "esp", "ah", "gre",
+];
+const MAX_COMMENT_LEN: usize = 256;
+
+/// Validate a firewall chain name: alphanumeric, underscore, hyphen only.
+fn validate_chain(chain: &str) -> Result<()> {
+	if chain.is_empty()
+		|| !chain.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+	{
+		return Err(MyceliumError::ParseError(format!(
+			"invalid chain name: {chain}"
+		)));
+	}
+	Ok(())
+}
+
+/// Validate a protocol name against the allowlist.
+fn validate_protocol(proto: &str) -> Result<()> {
+	if !VALID_PROTOCOLS.contains(&proto.to_lowercase().as_str()) {
+		return Err(MyceliumError::ParseError(format!(
+			"invalid protocol: {proto} (allowed: {})",
+			VALID_PROTOCOLS.join(", ")
+		)));
+	}
+	Ok(())
+}
+
+/// Validate an IP address or CIDR notation.
+fn validate_address(addr: &str) -> Result<()> {
+	// Strip optional CIDR suffix
+	let (ip_part, cidr) = if let Some((ip, prefix)) = addr.split_once('/') {
+		(ip, Some(prefix))
+	} else {
+		(addr, None)
+	};
+
+	// Must be a valid IPv4 or IPv6 address
+	if ip_part.parse::<std::net::IpAddr>().is_err() {
+		return Err(MyceliumError::ParseError(format!(
+			"invalid IP address: {addr}"
+		)));
+	}
+
+	// CIDR prefix must be numeric and in range
+	if let Some(prefix) = cidr {
+		let bits: u8 = prefix.parse().map_err(|_| {
+			MyceliumError::ParseError(format!("invalid CIDR prefix: {addr}"))
+		})?;
+		let max = if ip_part.contains(':') { 128 } else { 32 };
+		if bits > max {
+			return Err(MyceliumError::ParseError(format!(
+				"CIDR prefix {bits} out of range for {addr}"
+			)));
+		}
+	}
+
+	Ok(())
+}
+
+/// Validate a firewall comment: no quotes or control characters.
+fn validate_comment(comment: &str) -> Result<()> {
+	if comment.len() > MAX_COMMENT_LEN {
+		return Err(MyceliumError::ParseError(format!(
+			"comment too long ({} chars, max {MAX_COMMENT_LEN})",
+			comment.len()
+		)));
+	}
+	if comment.contains('"') || comment.contains('\'') || comment.contains('\\') {
+		return Err(MyceliumError::ParseError(
+			"comment must not contain quotes or backslashes".into(),
+		));
+	}
+	if comment.chars().any(|c| c.is_control()) {
+		return Err(MyceliumError::ParseError(
+			"comment must not contain control characters".into(),
+		));
+	}
+	Ok(())
+}
+
+/// Validate all fields of a firewall rule before executing.
+fn validate_firewall_rule(rule: &FirewallRule) -> Result<()> {
+	validate_chain(&rule.chain)?;
+	if let Some(proto) = &rule.protocol {
+		validate_protocol(proto)?;
+	}
+	if let Some(src) = &rule.source {
+		validate_address(src)?;
+	}
+	if let Some(dst) = &rule.destination {
+		validate_address(dst)?;
+	}
+	if let Some(comment) = &rule.comment {
+		validate_comment(comment)?;
+	}
+	Ok(())
+}
+
 pub fn add_firewall_rule(rule: &FirewallRule) -> Result<()> {
+	validate_firewall_rule(rule)?;
+
 	let nft_path = Path::new("/usr/sbin/nft");
 	let ipt_path = Path::new("/usr/sbin/iptables");
 
@@ -481,7 +582,8 @@ fn add_nft_rule(rule: &FirewallRule) -> Result<()> {
 	args.push(action.into());
 
 	if let Some(comment) = &rule.comment {
-		args.extend(["comment".into(), format!("\"{comment}\"")]);
+		// comment is already validated (no quotes/control chars)
+		args.extend(["comment".into(), comment.clone()]);
 	}
 
 	let arg_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
@@ -555,6 +657,23 @@ fn add_iptables_rule(rule: &FirewallRule) -> Result<()> {
 }
 
 pub fn remove_firewall_rule(rule_id: &str) -> Result<()> {
+	// Validate rule_id: must be numeric (nft handle) or chain:number (iptables)
+	if rule_id.is_empty() {
+		return Err(MyceliumError::ParseError("empty rule ID".into()));
+	}
+	if let Some((chain, num)) = rule_id.split_once(':') {
+		validate_chain(chain)?;
+		if num.parse::<u32>().is_err() {
+			return Err(MyceliumError::ParseError(format!(
+				"invalid iptables rule number: {num}"
+			)));
+		}
+	} else if rule_id.parse::<u32>().is_err() {
+		return Err(MyceliumError::ParseError(format!(
+			"invalid rule ID: {rule_id} (expected numeric handle or chain:number)"
+		)));
+	}
+
 	let nft_path = Path::new("/usr/sbin/nft");
 	let ipt_path = Path::new("/usr/sbin/iptables");
 
@@ -753,4 +872,162 @@ fn parse_iptables_rules() -> Result<Vec<FirewallRule>> {
 	}
 
 	Ok(rules)
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	// parse_hex_addr tests
+
+	#[test]
+	fn test_parse_hex_addr_ipv4_loopback() {
+		// 127.0.0.1 little-endian = 0100007F
+		let (addr, port) = parse_hex_addr("0100007F:0050");
+		assert_eq!(addr, "127.0.0.1");
+		assert_eq!(port, 80);
+	}
+
+	#[test]
+	fn test_parse_hex_addr_ipv4_zeros() {
+		let (addr, port) = parse_hex_addr("00000000:0000");
+		assert_eq!(addr, "0.0.0.0");
+		assert_eq!(port, 0);
+	}
+
+	#[test]
+	fn test_parse_hex_addr_ipv4_real() {
+		// 192.168.1.1 = C0.A8.01.01, little-endian = 0101A8C0
+		let (addr, port) = parse_hex_addr("0101A8C0:01BB");
+		assert_eq!(addr, "192.168.1.1");
+		assert_eq!(port, 443);
+	}
+
+	#[test]
+	fn test_parse_hex_addr_ipv6_loopback() {
+		let (addr, port) = parse_hex_addr("00000000000000000000000001000000:0016");
+		assert_eq!(addr, "::1");
+		assert_eq!(port, 22);
+	}
+
+	#[test]
+	fn test_parse_hex_addr_ipv6_full() {
+		let (addr, _) = parse_hex_addr("00000000000000000000000000000000:0000");
+		assert_eq!(addr, "::");
+	}
+
+	#[test]
+	fn test_parse_hex_addr_malformed_no_colon() {
+		let (addr, port) = parse_hex_addr("0100007F");
+		assert_eq!(addr, "0.0.0.0");
+		assert_eq!(port, 0);
+	}
+
+	#[test]
+	fn test_parse_hex_addr_max_port() {
+		let (_, port) = parse_hex_addr("00000000:FFFF");
+		assert_eq!(port, 65535);
+	}
+
+	#[test]
+	fn test_parse_hex_addr_odd_length_addr() {
+		let (addr, port) = parse_hex_addr("0100:0050");
+		assert_eq!(addr, "0.0.0.0");
+		assert_eq!(port, 80);
+	}
+
+	// parse_tcp_state tests
+
+	#[test]
+	fn test_parse_tcp_state_established() {
+		assert_eq!(parse_tcp_state(0x01), ConnectionState::Established);
+	}
+
+	#[test]
+	fn test_parse_tcp_state_all_valid() {
+		assert_eq!(parse_tcp_state(0x02), ConnectionState::SynSent);
+		assert_eq!(parse_tcp_state(0x03), ConnectionState::SynRecv);
+		assert_eq!(parse_tcp_state(0x04), ConnectionState::FinWait1);
+		assert_eq!(parse_tcp_state(0x05), ConnectionState::FinWait2);
+		assert_eq!(parse_tcp_state(0x06), ConnectionState::TimeWait);
+		assert_eq!(parse_tcp_state(0x07), ConnectionState::Close);
+		assert_eq!(parse_tcp_state(0x08), ConnectionState::CloseWait);
+		assert_eq!(parse_tcp_state(0x09), ConnectionState::LastAck);
+		assert_eq!(parse_tcp_state(0x0A), ConnectionState::Listen);
+		assert_eq!(parse_tcp_state(0x0B), ConnectionState::Closing);
+	}
+
+	#[test]
+	fn test_parse_tcp_state_unknown() {
+		assert_eq!(parse_tcp_state(0x00), ConnectionState::Unknown);
+		assert_eq!(parse_tcp_state(0x0C), ConnectionState::Unknown);
+		assert_eq!(parse_tcp_state(0xFF), ConnectionState::Unknown);
+	}
+
+	// extract_word_after tests
+
+	#[test]
+	fn test_extract_word_after_found() {
+		let line = "ip protocol tcp dport 80 accept";
+		assert_eq!(
+			extract_word_after(line, "ip protocol "),
+			Some("tcp".to_string())
+		);
+	}
+
+	#[test]
+	fn test_extract_word_after_not_found() {
+		let line = "ip daddr 10.0.0.1 accept";
+		assert_eq!(extract_word_after(line, "ip protocol "), None);
+	}
+
+	#[test]
+	fn test_extract_word_after_at_end() {
+		let line = "ip protocol ";
+		assert_eq!(
+			extract_word_after(line, "ip protocol "),
+			Some(String::new())
+		);
+	}
+
+	#[test]
+	fn test_extract_word_after_multiple_matches() {
+		let line = "ip saddr 10.0.0.1 ip saddr 10.0.0.2";
+		assert_eq!(
+			extract_word_after(line, "ip saddr "),
+			Some("10.0.0.1".to_string())
+		);
+	}
+
+	// extract_quoted tests
+
+	#[test]
+	fn test_extract_quoted_with_quotes() {
+		let line = r#"comment "allow ssh" accept"#;
+		assert_eq!(
+			extract_quoted(line, "comment "),
+			Some("allow ssh".to_string())
+		);
+	}
+
+	#[test]
+	fn test_extract_quoted_without_quotes() {
+		let line = "comment allow_ssh accept";
+		assert_eq!(
+			extract_quoted(line, "comment "),
+			Some("allow_ssh".to_string())
+		);
+	}
+
+	#[test]
+	fn test_extract_quoted_not_found() {
+		let line = "ip protocol tcp accept";
+		assert_eq!(extract_quoted(line, "comment "), None);
+	}
+
+	#[test]
+	fn test_extract_quoted_empty_quotes() {
+		let line = r#"comment "" accept"#;
+		assert_eq!(extract_quoted(line, "comment "), Some(String::new()));
+	}
 }

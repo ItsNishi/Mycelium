@@ -243,3 +243,65 @@ impl TableDisplay for MemoryRegion {
 		);
 	}
 }
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	// parse_address tests
+
+	#[test]
+	fn test_parse_address_decimal() {
+		assert_eq!(parse_address("12345").unwrap(), 12345);
+	}
+
+	#[test]
+	fn test_parse_address_hex_lowercase() {
+		assert_eq!(parse_address("0x1a2b").unwrap(), 0x1a2b);
+	}
+
+	#[test]
+	fn test_parse_address_hex_uppercase() {
+		assert_eq!(parse_address("0X1A2B").unwrap(), 0x1a2b);
+	}
+
+	#[test]
+	fn test_parse_address_invalid() {
+		assert!(parse_address("not_a_number").is_err());
+	}
+
+	// hex_decode tests
+
+	#[test]
+	fn test_hex_decode_normal() {
+		assert_eq!(
+			hex_decode("4141ff00").unwrap(),
+			vec![0x41, 0x41, 0xff, 0x00]
+		);
+	}
+
+	#[test]
+	fn test_hex_decode_0x_prefix() {
+		assert_eq!(hex_decode("0x4141").unwrap(), vec![0x41, 0x41]);
+	}
+
+	#[test]
+	fn test_hex_decode_0x_uppercase_prefix() {
+		assert_eq!(hex_decode("0X4141").unwrap(), vec![0x41, 0x41]);
+	}
+
+	#[test]
+	fn test_hex_decode_odd_length() {
+		assert!(hex_decode("414").is_err());
+	}
+
+	#[test]
+	fn test_hex_decode_invalid_chars() {
+		assert!(hex_decode("gg00").is_err());
+	}
+
+	#[test]
+	fn test_hex_decode_empty() {
+		assert_eq!(hex_decode("").unwrap(), Vec::<u8>::new());
+	}
+}

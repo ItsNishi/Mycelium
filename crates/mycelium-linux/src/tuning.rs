@@ -5,6 +5,26 @@ use mycelium_core::types::*;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+/// Validate that a sysctl key doesn't allow path traversal.
+fn validate_sysctl_key(key: &str) -> Result<()> {
+	if key.is_empty() {
+		return Err(MyceliumError::ParseError("empty sysctl key".into()));
+	}
+	for component in key.split('.') {
+		if component.is_empty()
+			|| component == ".."
+			|| component.contains('/')
+			|| component.contains('\\')
+			|| component.contains('\0')
+		{
+			return Err(MyceliumError::ParseError(format!(
+				"invalid sysctl key: {key}"
+			)));
+		}
+	}
+	Ok(())
+}
+
 /// Convert a sysctl key (dot-separated) to a /proc/sys path.
 fn sysctl_path(key: &str) -> PathBuf {
 	let mut path = PathBuf::from("/proc/sys");
@@ -37,6 +57,7 @@ fn parse_value(raw: &str) -> TunableValue {
 }
 
 pub fn get_tunable(key: &str) -> Result<TunableValue> {
+	validate_sysctl_key(key)?;
 	let path = sysctl_path(key);
 
 	if !path.exists() {
@@ -61,6 +82,9 @@ pub fn get_tunable(key: &str) -> Result<TunableValue> {
 }
 
 pub fn list_tunables(prefix: &str) -> Result<Vec<TunableParam>> {
+	if !prefix.is_empty() {
+		validate_sysctl_key(prefix)?;
+	}
 	let base_path = if prefix.is_empty() {
 		PathBuf::from("/proc/sys")
 	} else {
@@ -102,6 +126,7 @@ fn collect_tunables(path: &Path, out: &mut Vec<TunableParam>) {
 }
 
 pub fn set_tunable(key: &str, value: &TunableValue) -> Result<TunableValue> {
+	validate_sysctl_key(key)?;
 	let path = sysctl_path(key);
 
 	if !path.exists() {
@@ -141,4 +166,50 @@ pub fn set_tunable(key: &str, value: &TunableValue) -> Result<TunableValue> {
 	})?;
 
 	Ok(previous)
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn test_sysctl_path() {
+		assert_eq!(
+			sysctl_path("net.ipv4.ip_forward"),
+			PathBuf::from("/proc/sys/net/ipv4/ip_forward")
+		);
+	}
+
+	#[test]
+	fn test_path_to_key() {
+		let path = Path::new("/proc/sys/net/ipv4/ip_forward");
+		assert_eq!(path_to_key(path), "net.ipv4.ip_forward");
+	}
+
+	#[test]
+	fn test_sysctl_round_trip() {
+		let key = "net.ipv4.ip_forward";
+		assert_eq!(path_to_key(&sysctl_path(key)), key);
+	}
+
+	#[test]
+	fn test_parse_value_integer() {
+		assert_eq!(parse_value("42"), TunableValue::Integer(42));
+	}
+
+	#[test]
+	fn test_parse_value_large_integer() {
+		assert_eq!(
+			parse_value("9223372036854775807"),
+			TunableValue::Integer(i64::MAX)
+		);
+	}
+
+	#[test]
+	fn test_parse_value_string() {
+		assert_eq!(
+			parse_value("cubic"),
+			TunableValue::String("cubic".to_string())
+		);
+	}
 }
