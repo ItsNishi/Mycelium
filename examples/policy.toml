@@ -1,0 +1,43 @@
+[global]
+default_profile = "operator"
+dry_run = false
+
+[[global.rules]]
+action = "allow"
+target = "all"
+
+[[global.rules]]
+action = "deny"
+target = { capability = "probe_manage" }
+reason = "eBPF probes disabled globally by default"
+
+[[global.rules]]
+action = "deny"
+target = { tool = "tuning_set" }
+filter = { tunable_prefixes = ["kernel."] }
+reason = "Kernel namespace tunables are dangerous"
+
+[profiles.claude-code]
+role = "admin"
+dry_run = false
+
+[[profiles.claude-code.rules]]
+action = "allow"
+target = { capability = "probe_manage" }
+
+[profiles.openclaw]
+role = "operator"
+
+[[profiles.openclaw.rules]]
+action = "allow"
+target = { tool = "service_action" }
+filter = { service_names = ["nginx", "postgresql", "redis"] }
+
+[[profiles.openclaw.rules]]
+action = "deny"
+target = { tool = "service_action" }
+reason = "OpenClaw can only manage nginx, postgresql, redis"
+
+[profiles.restricted-bot]
+role = "read-only"
+dry_run = true
