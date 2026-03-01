@@ -11,7 +11,7 @@ Like fungal mycelium threading through soil to surface nutrients, Mycelium threa
 
 ## ✨ Features
 
-- 🔍 **32 read operations** across 9 categories (process, memory, network, storage, system, tuning, services, logs, security)
+- 🔍 **35 operations** across 9 categories (process, memory, network, storage, system, tuning, services, logs, security)
 - 🛡️ **Policy engine** with role presets, capability groups, resource filters, and specificity-based evaluation
 - 📊 **Dual output** -- human-readable tables or structured JSON
 - 🧩 **Modular workspace** -- zero-dependency core, pluggable OS backends
@@ -47,7 +47,7 @@ Like fungal mycelium threading through soil to surface nutrients, Mycelium threa
 | `mycelium-core` | Types, `Platform` trait, errors, policy engine. Zero dependencies by default. |
 | `mycelium-linux` | Linux backend -- `/proc`, `/sys`, `systemctl`, `journalctl` |
 | `mycelium-cli` | CLI binary with table/JSON output for every operation |
-| `mycelium-mcp` | MCP server exposing all 32 tools to AI agents via JSON-RPC over stdio |
+| `mycelium-mcp` | MCP server exposing all 35 tools to AI agents via JSON-RPC over stdio |
 | `mycelium-windows` | Windows backend *(planned)* |
 
 ## 🚀 Quick Start
@@ -74,7 +74,7 @@ mycelium-mcp
 mycelium-mcp --config policy.toml --agent deploy-bot
 ```
 
-The server speaks JSON-RPC over stdin/stdout (MCP protocol 2024-11-05). All 32 tools are registered and discoverable via `tools/list`. Policy enforcement and audit logging apply to every tool call.
+The server speaks JSON-RPC over stdin/stdout (MCP protocol 2024-11-05). All 35 tools are registered and discoverable via `tools/list`. Policy enforcement and audit logging apply to every tool call.
 
 **Claude Desktop / MCP client config:**
 
@@ -203,7 +203,7 @@ dry_run = true
 
 **Roles:** `admin` (full access) · `operator` (reads + process/service management) · `read-only` (reads only) · `custom` (fully user-defined)
 
-**Capabilities:** `process_manage` · `kernel_tune` · `firewall_manage` · `service_manage` · `probe_manage` · `policy_manage`
+**Capabilities:** `process_manage` · `kernel_tune` · `firewall_manage` · `service_manage` · `probe_manage` · `policy_manage` · `memory_access`
 
 ```bash
 mycelium --config policy.toml policy show --profile deploy-bot
@@ -216,7 +216,7 @@ mycelium policy validate policy.toml
 | Category | Commands |
 |----------|----------|
 | **Process** | `list`, `inspect <PID>`, `resources <PID>` |
-| **Memory** | `info`, `process <PID>` |
+| **Memory** | `info`, `process <PID>`, `maps <PID>`, `read <PID> <ADDR> <SIZE>`, `write <PID> <ADDR> <HEX>` |
 | **Network** | `interfaces`, `connections`, `routes`, `ports`, `firewall` |
 | **Storage** | `disks`, `partitions`, `mounts`, `io` |
 | **System** | `info`, `kernel`, `cpu`, `uptime` |
@@ -233,9 +233,9 @@ mycelium policy validate policy.toml
 | Phase | Status | Description |
 |-------|--------|-------------|
 | **1** | ✅ Complete | Core types, Linux backend (read ops), CLI, policy engine |
-| **2** | ✅ Complete | MCP server (32 tools, JSON-RPC stdio, policy enforcement, audit logging) |
-| **3** | 🔜 Next | Write operations (kill, firewall, service control, sysctl) |
-| **4** | 📋 Planned | Windows backend (WMI, registry, WinAPI) |
+| **2** | ✅ Complete | MCP server (35 tools, JSON-RPC stdio, policy enforcement, audit logging) |
+| **3** | ✅ Complete | Write operations (kill, firewall, service control, sysctl, direct memory access) |
+| **4** | 🔜 Next | Windows backend (WMI, registry, WinAPI) |
 | **5** | 📋 Planned | eBPF probes (syscall tracing, network monitoring) |
 
 ## 🛠️ Development

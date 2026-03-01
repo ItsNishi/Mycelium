@@ -34,7 +34,7 @@ impl Default for LinuxPlatform {
 | `list_processes` | `/proc/[pid]/stat`, `/proc/[pid]/status`, `/proc/[pid]/cmdline` | Iterates `/proc/` for numeric directories |
 | `inspect_process` | `/proc/[pid]/stat`, `/proc/[pid]/status`, `/proc/[pid]/cmdline` | Single PID lookup |
 | `process_resources` | `/proc/[pid]/stat`, `/proc/[pid]/status`, `/proc/[pid]/fd`, `/proc/[pid]/io`, `/proc/meminfo` | FD count via directory listing, I/O bytes, memory percent |
-| `kill_process` | `nix::sys::signal::kill` | *(Phase 3 -- currently returns Unsupported)* |
+| `kill_process` | `nix::sys::signal::kill` | Sends signal to process via `kill(2)` |
 
 **Parsing notes:**
 - `/proc/[pid]/stat` -- the `comm` field (field 1) is in parentheses and may contain spaces. Parsing finds the last `)` to locate field boundaries correctly.
@@ -50,11 +50,16 @@ impl Default for LinuxPlatform {
 |--------|--------|---------|
 | `memory_info` | `/proc/meminfo` | MemTotal, MemFree, MemAvailable, Buffers, Cached, SwapTotal, SwapFree |
 | `process_memory` | `/proc/[pid]/status` | VmRSS, VmSize, RssFile, RssShmem, VmExe, VmData |
+| `process_memory_maps` | `/proc/[pid]/maps` | Parses virtual memory regions (address range, perms, offset, device, inode, pathname) |
+| `read_process_memory` | `/proc/[pid]/mem` | Seek + read, 1 MiB max per call, requires ptrace or root |
+| `write_process_memory` | `/proc/[pid]/mem` | Seek + write, requires ptrace or root |
 
 **Parsing notes:**
 - All `/proc/meminfo` and `/proc/[pid]/status` memory values are in kB, multiplied by 1024 to get bytes.
 - `used_bytes = total_bytes - available_bytes` (not `total - free`, since free excludes buffers/cache).
 - `shared_bytes` is `RssFile + RssShmem` from `/proc/[pid]/status`.
+- `/proc/[pid]/maps` lines: `start-end perms offset dev inode pathname`. Addresses parsed as hex.
+- `/proc/[pid]/mem` access: EFAULT (14) and EIO (5) mapped to descriptive "unmapped or inaccessible" errors.
 
 ### Network
 
@@ -65,8 +70,8 @@ impl Default for LinuxPlatform {
 | `list_routes` | `/proc/net/route` | IPv4 routing table |
 | `list_open_ports` | `/proc/net/tcp`, `/proc/net/tcp6`, `/proc/net/udp`, `/proc/net/udp6` | Filters for listening state (TCP) and bound sockets (UDP) |
 | `list_firewall_rules` | `nft list ruleset -a` or `iptables-save` | Tries nftables first, falls back to iptables |
-| `add_firewall_rule` | -- | *(Phase 3 -- currently returns Unsupported)* |
-| `remove_firewall_rule` | -- | *(Phase 3 -- currently returns Unsupported)* |
+| `add_firewall_rule` | `nft add rule` or `iptables -A` | Adds firewall rule via nftables or iptables |
+| `remove_firewall_rule` | `nft delete rule` or `iptables -D` | Removes firewall rule by handle/ID |
 
 **Interface details:**
 - `/sys/class/net/[iface]/address` -- MAC address
@@ -133,7 +138,7 @@ Pseudo-filesystems are excluded: proc, sysfs, devtmpfs, securityfs, cgroup, cgro
 |--------|--------|---------|
 | `get_tunable` | `/proc/sys/` | Key dots mapped to path separators |
 | `list_tunables` | `/proc/sys/` | Recursive directory traversal |
-| `set_tunable` | -- | *(Phase 3 -- currently returns Unsupported)* |
+| `set_tunable` | `/proc/sys/` | Writes value to sysctl path, returns previous value |
 
 **Key mapping:** `net.ipv4.ip_forward` becomes `/proc/sys/net/ipv4/ip_forward`. Values are parsed as integers first, falling back to strings. Permission-denied errors on individual files are handled gracefully during listing.
 
@@ -143,7 +148,7 @@ Pseudo-filesystems are excluded: proc, sysfs, devtmpfs, securityfs, cgroup, cgro
 |--------|--------|---------|
 | `list_services` | `systemctl list-units --type=service --all --no-pager --no-legend --plain` | Parses whitespace-delimited output |
 | `service_status` | `systemctl show <name>.service --no-pager` | Parses key=value lines |
-| `service_action` | -- | *(Phase 3 -- currently returns Unsupported)* |
+| `service_action` | `systemctl <action> <name>.service` | Start, stop, restart, reload, enable, disable |
 
 **State mapping from systemctl:**
 - `running` -> Running
@@ -213,18 +218,6 @@ Format: `TIMESTAMP HOSTNAME IDENT[PID]: MESSAGE`. The PID is extracted from squa
 | Users/groups | Yes | -- | `/etc/passwd` and `/etc/group` are world-readable |
 | Kernel modules | Yes | -- | `/proc/modules` is world-readable |
 | Security status | Partial | Full | SSH config may be restricted; firewall queries need root |
-
-## Phase 1 Limitations
-
-All write operations currently return `MyceliumError::Unsupported`:
-
-- `kill_process` -- "write operations not implemented in Phase 1"
-- `add_firewall_rule` -- same
-- `remove_firewall_rule` -- same
-- `set_tunable` -- same
-- `service_action` -- same
-
-These will be implemented in Phase 3.
 
 ## Edge Cases and Known Limitations
 

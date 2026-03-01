@@ -121,6 +121,22 @@ pub struct SwapInfo {
 }
 ```
 
+### MemoryRegion
+
+A single region from a process's virtual memory map (`/proc/<pid>/maps`).
+
+```rust
+pub struct MemoryRegion {
+    pub start_address: u64,
+    pub end_address: u64,
+    pub permissions: String,      // "rwxp", "r-xp", etc.
+    pub offset: u64,
+    pub device: String,           // "08:01"
+    pub inode: u64,
+    pub pathname: Option<String>, // "/lib/libc.so", "[heap]", "[stack]"
+}
+```
+
 ---
 
 ## Network Types

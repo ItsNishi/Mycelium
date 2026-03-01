@@ -213,7 +213,7 @@ impl Platform for MacPlatform {
     fn list_processes(&self) -> Result<Vec<ProcessInfo>> {
         // macOS implementation using sysctl, libproc, etc.
     }
-    // ... all 32 methods
+    // ... all 35 methods
 }
 ```
 
@@ -313,7 +313,7 @@ Mycelium/
 │   │       ├── lib.rs            MyceliumMcpService struct, policy/audit helpers
 │   │       ├── audit.rs          StderrAuditLog (tracing-based)
 │   │       └── tools/
-│   │           ├── mod.rs        #[tool_router] with all 32 #[tool] methods
+│   │           ├── mod.rs        #[tool_router] with all 35 #[tool] methods
 │   │           ├── response.rs   ok_json(), ok_text(), err_text(), dry_run_text()
 │   │           ├── process.rs    PidRequest, KillRequest, handlers
 │   │           ├── memory.rs     handle_info, handle_process

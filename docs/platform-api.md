@@ -6,7 +6,7 @@ The `Platform` trait defines the interface that all OS backends implement. Every
 
 ```rust
 pub trait Platform: Send + Sync {
-    // 32 methods: 27 read + 5 write
+    // 35 methods: 27 read + 5 write + 3 sensitive (memory access)
 }
 ```
 
@@ -23,12 +23,15 @@ All methods are synchronous. The MCP server wraps calls with `tokio::task::spawn
 | `process_resources` | `(&self, pid: u32) -> Result<ProcessResource>` | Read |
 | `kill_process` | `(&self, pid: u32, signal: Signal) -> Result<()>` | **Write** |
 
-### Memory (2 methods)
+### Memory (5 methods)
 
 | Method | Signature | Read/Write |
 |--------|-----------|------------|
 | `memory_info` | `(&self) -> Result<MemoryInfo>` | Read |
 | `process_memory` | `(&self, pid: u32) -> Result<ProcessMemory>` | Read |
+| `process_memory_maps` | `(&self, pid: u32) -> Result<Vec<MemoryRegion>>` | **Sensitive** |
+| `read_process_memory` | `(&self, pid: u32, address: u64, size: usize) -> Result<Vec<u8>>` | **Sensitive** |
+| `write_process_memory` | `(&self, pid: u32, address: u64, data: &[u8]) -> Result<usize>` | **Write** |
 
 ### Network (7 methods)
 

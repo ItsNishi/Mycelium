@@ -131,10 +131,11 @@ Allows all read operations. Denies all six write capabilities.
 | Deny | Capability(ServiceManage) |
 | Deny | Capability(ProbeManage) |
 | Deny | Capability(PolicyManage) |
+| Deny | Capability(MemoryAccess) |
 
 ### Operator
 
-Allows reads plus process and service management. Denies kernel tuning, firewall, probes, and policy management.
+Allows reads plus process and service management. Denies kernel tuning, firewall, probes, policy management, and direct memory access.
 
 | Action | Target |
 |--------|--------|
@@ -143,6 +144,7 @@ Allows reads plus process and service management. Denies kernel tuning, firewall
 | Deny | Capability(FirewallManage) |
 | Deny | Capability(ProbeManage) |
 | Deny | Capability(PolicyManage) |
+| Deny | Capability(MemoryAccess) |
 
 ### Admin
 
@@ -168,6 +170,7 @@ Capabilities group related write tools together so rules can target them as a un
 | ServiceManage | `"service_manage"` | `service_action` |
 | ProbeManage | `"probe_manage"` | `probe_attach`, `probe_detach` |
 | PolicyManage | `"policy_manage"` | `policy_switch_profile` |
+| MemoryAccess | `"memory_access"` | `memory_maps`, `memory_read`, `memory_write` |
 
 ## Evaluation Algorithm
 

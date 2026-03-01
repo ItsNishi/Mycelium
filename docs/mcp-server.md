@@ -1,6 +1,6 @@
 # MCP Server
 
-The `mycelium-mcp` binary exposes all 32 Platform methods as MCP tools over a JSON-RPC stdio transport. AI agents connect, discover tools via `tools/list`, and call them with typed JSON parameters. Every call is evaluated against the policy engine and logged to the audit trail.
+The `mycelium-mcp` binary exposes all 35 Platform methods as MCP tools over a JSON-RPC stdio transport. AI agents connect, discover tools via `tools/list`, and call them with typed JSON parameters. Every call is evaluated against the policy engine and logged to the audit trail.
 
 ## Building
 
@@ -74,7 +74,7 @@ The server responds to `initialize`, `notifications/initialized`, `tools/list`, 
 
 ## Tool List
 
-All 32 tools organized by category. Tools without parameters take an empty `arguments: {}` object. Tools with parameters require a JSON object matching the listed schema.
+All 35 tools organized by category. Tools without parameters take an empty `arguments: {}` object. Tools with parameters require a JSON object matching the listed schema.
 
 ### Process (4 tools)
 
@@ -85,12 +85,15 @@ All 32 tools organized by category. Tools without parameters take an empty `argu
 | `process_resources` | `{ pid: u32 }` | Get CPU, memory, I/O usage for a process |
 | `process_kill` | `{ pid: u32, signal: String }` | Send a signal (TERM, KILL, HUP, etc.) |
 
-### Memory (2 tools)
+### Memory (5 tools)
 
 | Tool | Parameters | Description |
 |------|-----------|-------------|
 | `memory_info` | None | System-wide memory and swap information |
 | `memory_process` | `{ pid: u32 }` | Memory details for a single process |
+| `memory_maps` | `{ pid: u32 }` | List memory regions (maps) for a process |
+| `memory_read` | `{ pid: u32, address: u64, size: u64 }` | Read raw bytes from process virtual memory |
+| `memory_write` | `{ pid: u32, address: u64, hex_data: String }` | Write raw bytes to process virtual memory |
 
 ### Network (7 tools)
 
@@ -227,7 +230,7 @@ Fields:
 │  main.rs          lib.rs            tools/mod.rs     │
 │  ┌──────────┐    ┌──────────────┐  ┌──────────────┐ │
 │  │ CLI args │───▶│ MCP Service  │──│ Tool Router  │ │
-│  │ stdio()  │    │ check_policy │  │ 32 #[tool]   │ │
+│  │ stdio()  │    │ check_policy │  │ 35 #[tool]   │ │
 │  └──────────┘    │ log_success  │  │ methods      │ │
 │                  │ log_failure  │  └──────┬───────┘ │
 │                  └──────┬───────┘         │         │
