@@ -3,6 +3,7 @@ resolver = "3"
 members = [
 	"crates/mycelium-core",
 	"crates/mycelium-linux",
+	"crates/mycelium-windows",
 	"crates/mycelium-cli",
 	"crates/mycelium-mcp",
 ]

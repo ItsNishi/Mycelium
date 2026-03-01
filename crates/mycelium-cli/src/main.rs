@@ -77,7 +77,10 @@ fn main() {
 	#[cfg(target_os = "linux")]
 	let platform = mycelium_linux::LinuxPlatform::new();
 
-	#[cfg(not(target_os = "linux"))]
+	#[cfg(target_os = "windows")]
+	let platform = mycelium_windows::WindowsPlatform::new();
+
+	#[cfg(not(any(target_os = "linux", target_os = "windows")))]
 	{
 		eprintln!("error: this platform is not yet supported");
 		std::process::exit(1);

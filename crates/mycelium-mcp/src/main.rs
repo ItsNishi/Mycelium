@@ -42,8 +42,12 @@ async fn main() -> anyhow::Result<()> {
 	let platform: Arc<dyn mycelium_core::platform::Platform> =
 		Arc::new(mycelium_linux::LinuxPlatform);
 
-	#[cfg(not(target_os = "linux"))]
-	compile_error!("mycelium-mcp currently only supports Linux");
+	#[cfg(target_os = "windows")]
+	let platform: Arc<dyn mycelium_core::platform::Platform> =
+		Arc::new(mycelium_windows::WindowsPlatform);
+
+	#[cfg(not(any(target_os = "linux", target_os = "windows")))]
+	compile_error!("mycelium-mcp: unsupported platform");
 
 	let service = MyceliumMcpService::new(platform, policy, audit, args.agent);
 
