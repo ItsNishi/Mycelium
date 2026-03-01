@@ -21,3 +21,19 @@ pub struct SwapInfo {
 	pub used_bytes: u64,
 	pub free_bytes: u64,
 }
+
+/// A single region from a process's virtual memory map (`/proc/<pid>/maps`).
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct MemoryRegion {
+	pub start_address: u64,
+	pub end_address: u64,
+	/// Permission string, e.g. "rwxp", "r-xp".
+	pub permissions: String,
+	pub offset: u64,
+	/// Device major:minor, e.g. "08:01".
+	pub device: String,
+	pub inode: u64,
+	/// Mapped file or label, e.g. "/lib/libc.so", "[heap]", "[stack]".
+	pub pathname: Option<String>,
+}

@@ -48,6 +48,18 @@ impl Platform for LinuxPlatform {
 		crate::memory::process_memory(pid)
 	}
 
+	fn process_memory_maps(&self, pid: u32) -> Result<Vec<MemoryRegion>> {
+		crate::memory::process_memory_maps(pid)
+	}
+
+	fn read_process_memory(&self, pid: u32, address: u64, size: usize) -> Result<Vec<u8>> {
+		crate::memory::read_process_memory(pid, address, size)
+	}
+
+	fn write_process_memory(&self, pid: u32, address: u64, data: &[u8]) -> Result<usize> {
+		crate::memory::write_process_memory(pid, address, data)
+	}
+
 	// -- Network --
 
 	fn list_interfaces(&self) -> Result<Vec<NetworkInterface>> {

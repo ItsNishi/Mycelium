@@ -71,6 +71,30 @@ impl MyceliumMcpService {
 		memory::handle_process(self, req).await
 	}
 
+	#[tool(description = "List memory regions (maps) for a process")]
+	async fn memory_maps(
+		&self,
+		Parameters(req): Parameters<process::PidRequest>,
+	) -> Result<CallToolResult, McpError> {
+		memory::handle_maps(self, req).await
+	}
+
+	#[tool(description = "Read raw bytes from a process's virtual memory")]
+	async fn memory_read(
+		&self,
+		Parameters(req): Parameters<memory::MemoryReadRequest>,
+	) -> Result<CallToolResult, McpError> {
+		memory::handle_read(self, req).await
+	}
+
+	#[tool(description = "Write raw bytes to a process's virtual memory")]
+	async fn memory_write(
+		&self,
+		Parameters(req): Parameters<memory::MemoryWriteRequest>,
+	) -> Result<CallToolResult, McpError> {
+		memory::handle_write(self, req).await
+	}
+
 	// -- Network --
 
 	#[tool(description = "List network interfaces with addresses and stats")]

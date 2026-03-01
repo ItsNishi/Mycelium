@@ -22,13 +22,22 @@ pub trait Platform: Send + Sync {
 	/// Send a signal to a process. **WRITE**
 	fn kill_process(&self, pid: u32, signal: Signal) -> Result<()>;
 
-	// -- Memory (2 methods) --
+	// -- Memory (5 methods) --
 
 	/// Get system-wide memory information.
 	fn memory_info(&self) -> Result<MemoryInfo>;
 
 	/// Get memory details for a single process.
 	fn process_memory(&self, pid: u32) -> Result<ProcessMemory>;
+
+	/// List virtual memory regions for a process (`/proc/<pid>/maps`).
+	fn process_memory_maps(&self, pid: u32) -> Result<Vec<MemoryRegion>>;
+
+	/// Read raw bytes from a process's virtual memory. **SENSITIVE**
+	fn read_process_memory(&self, pid: u32, address: u64, size: usize) -> Result<Vec<u8>>;
+
+	/// Write raw bytes to a process's virtual memory. Returns bytes written. **WRITE**
+	fn write_process_memory(&self, pid: u32, address: u64, data: &[u8]) -> Result<usize>;
 
 	// -- Network (7 methods) --
 

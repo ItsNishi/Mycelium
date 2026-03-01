@@ -63,6 +63,12 @@ impl Role {
 					filter: None,
 					reason: Some("read-only: no policy management".into()),
 				},
+				PolicyRule {
+					action: Action::Deny,
+					target: RuleTarget::Capability(Capability::MemoryAccess),
+					filter: None,
+					reason: Some("read-only: no direct memory access".into()),
+				},
 			],
 			Self::Operator => vec![
 				PolicyRule {
@@ -94,6 +100,12 @@ impl Role {
 					target: RuleTarget::Capability(Capability::PolicyManage),
 					filter: None,
 					reason: Some("operator: no policy management".into()),
+				},
+				PolicyRule {
+					action: Action::Deny,
+					target: RuleTarget::Capability(Capability::MemoryAccess),
+					filter: None,
+					reason: Some("operator: no direct memory access".into()),
 				},
 			],
 			Self::Admin => vec![PolicyRule {

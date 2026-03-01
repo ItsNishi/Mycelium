@@ -87,7 +87,7 @@ fn main() {
 
 	match cli.command {
 		Command::Process(cmd) => cmd.run(&platform, format, dry_run),
-		Command::Memory(cmd) => cmd.run(&platform, format),
+		Command::Memory(cmd) => cmd.run(&platform, format, dry_run),
 		Command::Network(cmd) => cmd.run(&platform, format, dry_run),
 		Command::Storage(cmd) => cmd.run(&platform, format),
 		Command::System(cmd) => cmd.run(&platform, format),

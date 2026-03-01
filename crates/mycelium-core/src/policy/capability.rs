@@ -16,6 +16,8 @@ pub enum Capability {
 	ProbeManage,
 	/// Switch active policy profile at runtime.
 	PolicyManage,
+	/// Read/write process virtual memory.
+	MemoryAccess,
 }
 
 impl Capability {
@@ -28,6 +30,7 @@ impl Capability {
 			Self::ServiceManage => &["service_action"],
 			Self::ProbeManage => &["probe_attach", "probe_detach"],
 			Self::PolicyManage => &["policy_switch_profile"],
+			Self::MemoryAccess => &["memory_maps", "memory_read", "memory_write"],
 		}
 	}
 
@@ -46,6 +49,7 @@ impl std::fmt::Display for Capability {
 			Self::ServiceManage => "service_manage",
 			Self::ProbeManage => "probe_manage",
 			Self::PolicyManage => "policy_manage",
+			Self::MemoryAccess => "memory_access",
 		};
 		write!(f, "{s}")
 	}
@@ -62,6 +66,7 @@ impl std::str::FromStr for Capability {
 			"service_manage" => Ok(Self::ServiceManage),
 			"probe_manage" => Ok(Self::ProbeManage),
 			"policy_manage" => Ok(Self::PolicyManage),
+			"memory_access" => Ok(Self::MemoryAccess),
 			_ => Err(format!("unknown capability: {s}")),
 		}
 	}
