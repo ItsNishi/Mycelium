@@ -59,6 +59,7 @@ pub fn list_services() -> Result<Vec<ServiceInfo>> {
 			enabled: fields[1] == "loaded",
 			pid: None, // Filled in by service_status for individual queries
 			description,
+			dependencies: Vec::new(),
 		});
 	}
 
@@ -92,6 +93,7 @@ pub fn service_status(name: &str) -> Result<ServiceInfo> {
 		enabled: false,
 		pid: None,
 		description: None,
+		dependencies: Vec::new(),
 	};
 
 	for line in stdout.lines() {
@@ -114,6 +116,12 @@ pub fn service_status(name: &str) -> Result<ServiceInfo> {
 			if pid > 0 {
 				info.pid = Some(pid);
 			}
+		} else if let Some(val) = line.strip_prefix("Requires=") {
+			info.dependencies = val
+				.split_whitespace()
+				.filter(|s| !s.is_empty())
+				.map(|s| s.strip_suffix(".service").unwrap_or(s).to_string())
+				.collect();
 		}
 	}
 

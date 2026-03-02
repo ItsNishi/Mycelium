@@ -1,11 +1,47 @@
-//! System information via sysinfo and registry.
+//! System information via sysinfo, registry, and WMI.
 
 use sysinfo::System;
+use wmi::{COMLibrary, WMIConnection};
 use winreg::enums::HKEY_LOCAL_MACHINE;
 use winreg::RegKey;
 
 use mycelium_core::error::{MyceliumError, Result};
 use mycelium_core::types::{CpuInfo, KernelInfo, SystemInfo};
+
+#[derive(serde::Deserialize)]
+#[allow(non_snake_case)]
+struct WmiProcessor {
+	L2CacheSize: Option<u32>,
+	L3CacheSize: Option<u32>,
+	CurrentClockSpeed: Option<u32>,
+}
+
+struct CpuWmiInfo {
+	cache_size_kb: u64,
+	current_clock_mhz: Option<f64>,
+}
+
+fn get_cpu_wmi_info() -> CpuWmiInfo {
+	let com = match COMLibrary::new() {
+		Ok(c) => c,
+		Err(_) => return CpuWmiInfo { cache_size_kb: 0, current_clock_mhz: None },
+	};
+	let wmi = match WMIConnection::new(com) {
+		Ok(w) => w,
+		Err(_) => return CpuWmiInfo { cache_size_kb: 0, current_clock_mhz: None },
+	};
+	let results: Vec<WmiProcessor> = wmi
+		.raw_query("SELECT L2CacheSize, L3CacheSize, CurrentClockSpeed FROM Win32_Processor")
+		.unwrap_or_default();
+
+	results
+		.first()
+		.map(|p| CpuWmiInfo {
+			cache_size_kb: p.L2CacheSize.unwrap_or(0) as u64 + p.L3CacheSize.unwrap_or(0) as u64,
+			current_clock_mhz: p.CurrentClockSpeed.map(|v| v as f64),
+		})
+		.unwrap_or(CpuWmiInfo { cache_size_kb: 0, current_clock_mhz: None })
+}
 
 pub fn system_info() -> Result<SystemInfo> {
 	let boot_time = System::boot_time();
@@ -60,7 +96,7 @@ pub fn cpu_info() -> Result<CpuInfo> {
 		.first()
 		.map(|c| c.brand().to_string())
 		.unwrap_or_default();
-	let freq = cpus
+	let sysinfo_freq = cpus
 		.first()
 		.map(|c| c.frequency() as f64)
 		.unwrap_or(0.0);
@@ -71,12 +107,15 @@ pub fn cpu_info() -> Result<CpuInfo> {
 		cpus.iter().map(|c| c.cpu_usage() as f64).sum::<f64>() / cpus.len() as f64
 	};
 
+	let wmi_info = get_cpu_wmi_info();
+	let freq = wmi_info.current_clock_mhz.unwrap_or(sysinfo_freq);
+
 	Ok(CpuInfo {
 		model_name: model,
-		cores_physical: sys.physical_core_count().unwrap_or(0) as u32,
+		cores_physical: System::physical_core_count().unwrap_or(0) as u32,
 		cores_logical: cpus.len() as u32,
 		frequency_mhz: freq,
-		cache_size_kb: 0, // not exposed by sysinfo
+		cache_size_kb: wmi_info.cache_size_kb,
 		load_average: [0.0, 0.0, 0.0], // no load average on Windows
 		usage_percent: usage,
 	})

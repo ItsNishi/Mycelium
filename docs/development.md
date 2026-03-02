@@ -266,13 +266,13 @@ Mycelium/
 │   │       │   └── capability.rs Capability enum and tool mapping
 │   │       └── types/
 │   │           ├── mod.rs        Re-exports
-│   │           ├── process.rs    ProcessInfo, ProcessState, Signal, ...
-│   │           ├── memory.rs     MemoryInfo, SwapInfo
+│   │           ├── process.rs    ProcessInfo, Signal, HandleInfo, PeInfo, TokenInfo, ...
+│   │           ├── memory.rs     MemoryInfo, SwapInfo, SearchPattern, MemoryMatch, ...
 │   │           ├── network.rs    NetworkInterface, Connection, Route, ...
 │   │           ├── storage.rs    DiskInfo, Partition, MountPoint, IoStats
 │   │           ├── system.rs     SystemInfo, KernelInfo, CpuInfo
 │   │           ├── service.rs    ServiceInfo, ServiceState, ServiceAction
-│   │           ├── security.rs   UserInfo, GroupInfo, KernelModule, ...
+│   │           ├── security.rs   UserInfo, GroupInfo, PersistenceEntry, HookInfo, ...
 │   │           ├── log.rs        LogEntry, LogLevel, LogQuery
 │   │           ├── probe.rs      ProbeHandle, ProbeConfig, ProbeEvent
 │   │           └── tuning.rs     TunableParam, TunableValue
@@ -313,18 +313,35 @@ Mycelium/
 │   │       ├── lib.rs            MyceliumMcpService struct, policy/audit helpers
 │   │       ├── audit.rs          StderrAuditLog (tracing-based)
 │   │       └── tools/
-│   │           ├── mod.rs        #[tool_router] with all 35 #[tool] methods
+│   │           ├── mod.rs        #[tool_router] with all 43 #[tool] methods
 │   │           ├── response.rs   ok_json(), ok_text(), err_text(), dry_run_text()
 │   │           ├── process.rs    PidRequest, KillRequest, handlers
-│   │           ├── memory.rs     handle_info, handle_process
+│   │           ├── memory.rs     handle_info, handle_process, handle_search, ...
 │   │           ├── network.rs    FirewallAddRequest, FirewallRemoveRequest, handlers
 │   │           ├── storage.rs    handle_disks/partitions/mounts/io
 │   │           ├── system.rs     handle_info/kernel/cpu/uptime
 │   │           ├── tuning.rs     KeyRequest, PrefixRequest, SetRequest, handlers
 │   │           ├── service.rs    NameRequest, ActionRequest, handlers
 │   │           ├── log.rs        LogReadRequest, handle_read
-│   │           └── security.rs   handle_users/groups/modules/status
-│   └── mycelium-windows/         Phase 4 (placeholder)
+│   │           ├── security.rs   handle_users/groups/modules/status/persistence/hooks
+│   │           └── error_mapping.rs  OS error code to agent-friendly messages
+│   └── mycelium-windows/         Windows backend (Phase 4/4.5 — complete)
+│       └── src/
+│           ├── lib.rs            Module re-exports
+│           ├── platform.rs       WindowsPlatform struct + all trait impls
+│           ├── process.rs        Process listing, kill, env, threads, modules
+│           ├── memory.rs         Memory info, maps, read/write/protect/search
+│           ├── network.rs        Connections, routes, ports, firewall (WMI)
+│           ├── storage.rs        Disks, partitions, mounts, I/O stats
+│           ├── system.rs         System info, kernel, CPU, uptime
+│           ├── tuning.rs         Registry-backed kernel tunables
+│           ├── service.rs        SCM-based service management, event logs
+│           ├── security.rs       Users, groups, kernel modules, security status
+│           ├── privilege.rs      SeDebugPrivilege, token privilege enum, token inspect
+│           ├── handle.rs         Process handle enumeration (NtQuerySystemInformation)
+│           ├── pe.rs             PE header parsing (manual, no external lib)
+│           ├── persistence.rs    Persistence mechanism scanning
+│           └── hooks.rs          API hook detection (inline, IAT, EAT)
 ├── examples/
 │   └── policy.toml               Example policy config
 ├── docs/                         Documentation

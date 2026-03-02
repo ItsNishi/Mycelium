@@ -1,6 +1,6 @@
 # CLI Reference
 
-The `mycelium` binary provides command-line access to all Platform read operations, policy management, and (in future phases) write operations.
+The `mycelium` binary provides command-line access to all Platform operations, policy management, and security research tools.
 
 ## Building
 
@@ -69,6 +69,21 @@ Get detailed info for a single process.
 mycelium process inspect 1
 ```
 
+#### `mycelium process privileges <PID>`
+
+List token privileges for a process.
+
+```bash
+mycelium process privileges 1234
+```
+
+```
+PRIVILEGE                                ENABLED
+SeDebugPrivilege                         true
+SeChangeNotifyPrivilege                  true
+SeShutdownPrivilege                      false
+```
+
 #### `mycelium process resources <PID>`
 
 Get resource usage for a single process.
@@ -76,6 +91,31 @@ Get resource usage for a single process.
 ```
 PID    CPU%   MEMORY       MEM%   VIRTUAL      FDS    THREADS  READ_BYTES   WRITE_BYTES
 1823   0.10   6291456      0.04   134217728    24     1        1048576      524288
+```
+
+#### `mycelium process handles <PID>`
+
+List open handles (files, registry keys, mutexes, etc.) for a process.
+
+```bash
+mycelium process handles 1234
+```
+
+#### `mycelium process pe-inspect [--pid <PID>] [--path <PATH>]`
+
+Parse PE headers of a process or file. Returns imports, exports, sections, characteristics.
+
+```bash
+mycelium process pe-inspect --pid 1234
+mycelium process pe-inspect --path C:\Windows\System32\ntdll.dll
+```
+
+#### `mycelium process token <PID>`
+
+Inspect process token security details (integrity level, groups, elevation, impersonation).
+
+```bash
+mycelium process token 1234
 ```
 
 ---
@@ -102,6 +142,41 @@ Show memory details for a single process.
 PID    RSS            VIRTUAL        SHARED         TEXT           DATA
 1823   6291456        134217728      2097152        524288         8388608
 ```
+
+#### `mycelium memory search <PID> [--hex <PATTERN>] [--utf8 <STRING>] [--utf16 <STRING>] [--max-matches <N>] [--perms <FILTER>]`
+
+Search process memory for byte patterns, UTF-8 strings, or UTF-16 strings.
+
+Exactly one of `--hex`, `--utf8`, or `--utf16` must be provided.
+
+```bash
+# Search for MZ header bytes
+mycelium memory search 1234 --hex 4d5a9000
+
+# Search for a UTF-8 string
+mycelium memory search 1234 --utf8 "password"
+
+# Search only writable regions
+mycelium memory search 1234 --utf8 "secret" --perms rw
+
+# Limit results
+mycelium memory search 1234 --hex 90909090 --max-matches 10
+```
+
+```
+3 match(es) found:
+
+  0x00007ff6a0001000  region=0x7ff6a0000000 perms=r-x- \Device\HarddiskVolume3\app.exe
+  00007ff6a0000ff0  4d 5a 90 00 03 00 00 00  04 00 00 00 ff ff 00 00 |MZ..............|
+```
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--hex` | | Hex-encoded byte pattern (e.g. `4d5a9000`) |
+| `--utf8` | | UTF-8 string to search for |
+| `--utf16` | | UTF-16LE string to search for |
+| `--max-matches` | `100` | Maximum results (max 10,000) |
+| `--perms` | all | Permission filter (e.g. `rw` for read+write only) |
 
 ---
 
@@ -371,6 +446,22 @@ Show security status overview.
 ```
 SELINUX          APPARMOR         FIREWALL  ROOT_LOGIN  PASSWORD_SSH
 disabled         disabled         true      false       true
+```
+
+#### `mycelium security persistence`
+
+Scan Windows persistence mechanisms (registry Run/RunOnce keys, scheduled tasks, services, startup folder, WMI subscriptions, COM hijacks).
+
+```bash
+mycelium security persistence
+```
+
+#### `mycelium security detect-hooks <PID>`
+
+Detect API hooks (inline, IAT, EAT) in a process by comparing in-memory code against on-disk PE images.
+
+```bash
+mycelium security detect-hooks 1234
 ```
 
 ---

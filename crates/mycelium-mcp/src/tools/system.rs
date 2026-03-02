@@ -24,7 +24,7 @@ pub async fn handle_info(svc: &MyceliumMcpService) -> Result<CallToolResult, Mcp
 			svc.log_failure("system_info", &e.to_string());
 			err_text(&e.to_string())
 		}
-		Err(e) => err_text(&format!("task join error: {e}")),
+		Err(e) => svc.handle_join_error("system_info", e),
 	}
 }
 
@@ -46,7 +46,7 @@ pub async fn handle_kernel(svc: &MyceliumMcpService) -> Result<CallToolResult, M
 			svc.log_failure("system_kernel", &e.to_string());
 			err_text(&e.to_string())
 		}
-		Err(e) => err_text(&format!("task join error: {e}")),
+		Err(e) => svc.handle_join_error("system_kernel", e),
 	}
 }
 
@@ -68,7 +68,7 @@ pub async fn handle_cpu(svc: &MyceliumMcpService) -> Result<CallToolResult, McpE
 			svc.log_failure("system_cpu", &e.to_string());
 			err_text(&e.to_string())
 		}
-		Err(e) => err_text(&format!("task join error: {e}")),
+		Err(e) => svc.handle_join_error("system_cpu", e),
 	}
 }
 
@@ -90,6 +90,6 @@ pub async fn handle_uptime(svc: &MyceliumMcpService) -> Result<CallToolResult, M
 			svc.log_failure("system_uptime", &e.to_string());
 			err_text(&e.to_string())
 		}
-		Err(e) => err_text(&format!("task join error: {e}")),
+		Err(e) => svc.handle_join_error("system_uptime", e),
 	}
 }

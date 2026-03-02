@@ -3,7 +3,7 @@
 use rmcp::ErrorData as McpError;
 use rmcp::model::CallToolResult;
 
-use super::response::{dry_run_text, err_text, ok_json, ok_text};
+use super::response::{dry_run_text, err_text, mapped_err, ok_json, ok_text};
 use crate::MyceliumMcpService;
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
@@ -56,7 +56,7 @@ pub async fn handle_interfaces(svc: &MyceliumMcpService) -> Result<CallToolResul
 			svc.log_failure("network_interfaces", &e.to_string());
 			err_text(&e.to_string())
 		}
-		Err(e) => err_text(&format!("task join error: {e}")),
+		Err(e) => svc.handle_join_error("network_interfaces", e),
 	}
 }
 
@@ -78,7 +78,7 @@ pub async fn handle_connections(svc: &MyceliumMcpService) -> Result<CallToolResu
 			svc.log_failure("network_connections", &e.to_string());
 			err_text(&e.to_string())
 		}
-		Err(e) => err_text(&format!("task join error: {e}")),
+		Err(e) => svc.handle_join_error("network_connections", e),
 	}
 }
 
@@ -100,7 +100,7 @@ pub async fn handle_routes(svc: &MyceliumMcpService) -> Result<CallToolResult, M
 			svc.log_failure("network_routes", &e.to_string());
 			err_text(&e.to_string())
 		}
-		Err(e) => err_text(&format!("task join error: {e}")),
+		Err(e) => svc.handle_join_error("network_routes", e),
 	}
 }
 
@@ -122,7 +122,7 @@ pub async fn handle_ports(svc: &MyceliumMcpService) -> Result<CallToolResult, Mc
 			svc.log_failure("network_ports", &e.to_string());
 			err_text(&e.to_string())
 		}
-		Err(e) => err_text(&format!("task join error: {e}")),
+		Err(e) => svc.handle_join_error("network_ports", e),
 	}
 }
 
@@ -144,7 +144,7 @@ pub async fn handle_firewall(svc: &MyceliumMcpService) -> Result<CallToolResult,
 			svc.log_failure("network_firewall", &e.to_string());
 			err_text(&e.to_string())
 		}
-		Err(e) => err_text(&format!("task join error: {e}")),
+		Err(e) => svc.handle_join_error("network_firewall", e),
 	}
 }
 
@@ -153,6 +153,9 @@ pub async fn handle_firewall_add(svc: &MyceliumMcpService, req: FirewallAddReque
 
 	let resource = format!("chain:{}", req.chain);
 	if let Some(result) = svc.check_policy("firewall_add", Some(&resource)) {
+		return result;
+	}
+	if let Some(result) = svc.check_rate_limit("firewall_add") {
 		return result;
 	}
 	if svc.is_dry_run() {
@@ -186,15 +189,18 @@ pub async fn handle_firewall_add(svc: &MyceliumMcpService, req: FirewallAddReque
 		}
 		Ok(Err(e)) => {
 			svc.log_failure("firewall_add", &e.to_string());
-			err_text(&e.to_string())
+			mapped_err(&e, None)
 		}
-		Err(e) => err_text(&format!("task join error: {e}")),
+		Err(e) => svc.handle_join_error("firewall_add", e),
 	}
 }
 
 pub async fn handle_firewall_remove(svc: &MyceliumMcpService, req: FirewallRemoveRequest) -> Result<CallToolResult, McpError> {
 	let resource = format!("rule_id:{}", req.rule_id);
 	if let Some(result) = svc.check_policy("firewall_remove", Some(&resource)) {
+		return result;
+	}
+	if let Some(result) = svc.check_rate_limit("firewall_remove") {
 		return result;
 	}
 	if svc.is_dry_run() {
@@ -210,8 +216,8 @@ pub async fn handle_firewall_remove(svc: &MyceliumMcpService, req: FirewallRemov
 		}
 		Ok(Err(e)) => {
 			svc.log_failure("firewall_remove", &e.to_string());
-			err_text(&e.to_string())
+			mapped_err(&e, None)
 		}
-		Err(e) => err_text(&format!("task join error: {e}")),
+		Err(e) => svc.handle_join_error("firewall_remove", e),
 	}
 }

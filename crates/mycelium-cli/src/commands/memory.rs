@@ -1,6 +1,6 @@
 use clap::Subcommand;
 use mycelium_core::platform::Platform;
-use mycelium_core::types::{MemoryInfo, MemoryRegion, ProcessMemory};
+use mycelium_core::types::{MemoryInfo, MemoryRegion, MemorySearchOptions, ProcessMemory, SearchPattern};
 
 use crate::output::*;
 
@@ -35,6 +35,26 @@ pub enum MemoryCmd {
 		address: String,
 		/// Hex-encoded data to write (e.g. "4141ff00")
 		hex_data: String,
+	},
+	/// Search process memory for byte patterns or strings
+	Search {
+		/// Process ID
+		pid: u32,
+		/// Hex pattern (e.g. "4d5a9000")
+		#[arg(long)]
+		hex: Option<String>,
+		/// UTF-8 string pattern
+		#[arg(long)]
+		utf8: Option<String>,
+		/// UTF-16 string pattern
+		#[arg(long)]
+		utf16: Option<String>,
+		/// Max results
+		#[arg(long, default_value = "100")]
+		max_matches: usize,
+		/// Permission filter (e.g. "rw")
+		#[arg(long)]
+		perms: Option<String>,
 	},
 }
 
@@ -100,6 +120,74 @@ impl MemoryCmd {
 				};
 				match platform.write_process_memory(*pid, addr, &data) {
 					Ok(written) => println!("{written} bytes written to pid {pid} at {addr:#x}"),
+					Err(e) => eprintln!("error: {e}"),
+				}
+			}
+			Self::Search {
+				pid,
+				hex,
+				utf8,
+				utf16,
+				max_matches,
+				perms,
+			} => {
+				if dry_run {
+					println!("[dry-run] memory search would scan pid {pid}");
+					return;
+				}
+
+				let pattern_count =
+					hex.is_some() as u8 + utf8.is_some() as u8 + utf16.is_some() as u8;
+				if pattern_count != 1 {
+					eprintln!("error: exactly one of --hex, --utf8, or --utf16 must be provided");
+					return;
+				}
+
+				let pattern = if let Some(h) = hex {
+					match hex_decode(h) {
+						Ok(bytes) => SearchPattern::Bytes(bytes),
+						Err(e) => {
+							eprintln!("error: {e}");
+							return;
+						}
+					}
+				} else if let Some(u) = utf8 {
+					SearchPattern::Utf8(u.clone())
+				} else if let Some(u) = utf16 {
+					SearchPattern::Utf16(u.clone())
+				} else {
+					unreachable!()
+				};
+
+				let options = MemorySearchOptions {
+					max_matches: *max_matches,
+					context_size: 32,
+					permissions_filter: perms.clone().unwrap_or_default(),
+				};
+
+				match platform.search_process_memory(*pid, &pattern, &options) {
+					Ok(matches) => {
+						if matches.is_empty() {
+							println!("no matches found");
+						} else {
+							println!("{} match(es) found:\n", matches.len());
+							for m in &matches {
+								println!(
+									"  {:#018x}  region={:#x} perms={} {}",
+									m.address,
+									m.region_start,
+									m.region_permissions,
+									m.region_pathname.as_deref().unwrap_or(""),
+								);
+								if !m.context_bytes.is_empty() {
+									let ctx_start =
+										m.address.saturating_sub((m.context_bytes.len() / 2) as u64);
+									print_hex_dump(ctx_start, &m.context_bytes);
+								}
+								println!();
+							}
+						}
+					}
 					Err(e) => eprintln!("error: {e}"),
 				}
 			}

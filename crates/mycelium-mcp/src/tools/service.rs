@@ -3,7 +3,7 @@
 use rmcp::ErrorData as McpError;
 use rmcp::model::CallToolResult;
 
-use super::response::{dry_run_text, err_text, ok_json, ok_text};
+use super::response::{dry_run_text, err_text, mapped_err, ok_json, ok_text};
 use crate::MyceliumMcpService;
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
@@ -41,7 +41,7 @@ pub async fn handle_list(svc: &MyceliumMcpService) -> Result<CallToolResult, Mcp
 			svc.log_failure("service_list", &e.to_string());
 			err_text(&e.to_string())
 		}
-		Err(e) => err_text(&format!("task join error: {e}")),
+		Err(e) => svc.handle_join_error("service_list", e),
 	}
 }
 
@@ -71,7 +71,7 @@ pub async fn handle_status(svc: &MyceliumMcpService, req: NameRequest) -> Result
 			svc.log_failure("service_status", &e.to_string());
 			err_text(&e.to_string())
 		}
-		Err(e) => err_text(&format!("task join error: {e}")),
+		Err(e) => svc.handle_join_error("service_status", e),
 	}
 }
 
@@ -85,6 +85,9 @@ pub async fn handle_action(svc: &MyceliumMcpService, req: ActionRequest) -> Resu
 		..Default::default()
 	};
 	if let Some(result) = svc.check_policy_with_context("service_action", Some(&resource), Some(&ctx)) {
+		return result;
+	}
+	if let Some(result) = svc.check_rate_limit("service_action") {
 		return result;
 	}
 	if svc.is_dry_run() {
@@ -110,8 +113,8 @@ pub async fn handle_action(svc: &MyceliumMcpService, req: ActionRequest) -> Resu
 		}
 		Ok(Err(e)) => {
 			svc.log_failure("service_action", &e.to_string());
-			err_text(&e.to_string())
+			mapped_err(&e, None)
 		}
-		Err(e) => err_text(&format!("task join error: {e}")),
+		Err(e) => svc.handle_join_error("service_action", e),
 	}
 }

@@ -11,7 +11,7 @@ Like fungal mycelium threading through soil to surface nutrients, Mycelium threa
 
 ## ✨ Features
 
-- 🔍 **35 operations** across 9 categories (process, memory, network, storage, system, tuning, services, logs, security)
+- 🔍 **43 tools** across 9 categories (process, memory, network, storage, system, tuning, services, logs, security)
 - 🛡️ **Policy engine** with role presets, capability groups, resource filters, and specificity-based evaluation
 - 📊 **Dual output** -- human-readable tables or structured JSON
 - 🧩 **Modular workspace** -- zero-dependency core, pluggable OS backends
@@ -39,7 +39,7 @@ Like fungal mycelium threading through soil to surface nutrients, Mycelium threa
       │ linux        │    │ windows      │
       │ /proc  /sys  │    │ WMI  winreg  │
       └──────────────┘    └──────────────┘
-            ✅                  🔜
+            ✅                  ✅
 ```
 
 | Crate | Description |
@@ -47,8 +47,8 @@ Like fungal mycelium threading through soil to surface nutrients, Mycelium threa
 | `mycelium-core` | Types, `Platform` trait, errors, policy engine. Zero dependencies by default. |
 | `mycelium-linux` | Linux backend -- `/proc`, `/sys`, `systemctl`, `journalctl` |
 | `mycelium-cli` | CLI binary with table/JSON output for every operation |
-| `mycelium-mcp` | MCP server exposing all 35 tools to AI agents via JSON-RPC over stdio |
-| `mycelium-windows` | Windows backend *(planned)* |
+| `mycelium-mcp` | MCP server exposing all 43 tools to AI agents via JSON-RPC over stdio |
+| `mycelium-windows` | Windows backend (sysinfo, WinAPI, WMI, NetAPI32) |
 
 ## 🚀 Quick Start
 
@@ -74,7 +74,7 @@ mycelium-mcp
 mycelium-mcp --config policy.toml --agent deploy-bot
 ```
 
-The server speaks JSON-RPC over stdin/stdout (MCP protocol 2024-11-05). All 35 tools are registered and discoverable via `tools/list`. Policy enforcement and audit logging apply to every tool call.
+The server speaks JSON-RPC over stdin/stdout (MCP protocol 2024-11-05). All 43 tools are registered and discoverable via `tools/list`. Policy enforcement and audit logging apply to every tool call.
 
 **Claude Desktop / MCP client config:**
 
@@ -215,15 +215,15 @@ mycelium policy validate policy.toml
 
 | Category | Commands |
 |----------|----------|
-| **Process** | `list`, `inspect <PID>`, `resources <PID>` |
-| **Memory** | `info`, `process <PID>`, `maps <PID>`, `read <PID> <ADDR> <SIZE>`, `write <PID> <ADDR> <HEX>` |
+| **Process** | `list`, `inspect <PID>`, `resources <PID>`, `privileges <PID>`, `handles <PID>`, `pe-inspect`, `token <PID>` |
+| **Memory** | `info`, `process <PID>`, `maps <PID>`, `read`, `write`, `search` |
 | **Network** | `interfaces`, `connections`, `routes`, `ports`, `firewall` |
 | **Storage** | `disks`, `partitions`, `mounts`, `io` |
 | **System** | `info`, `kernel`, `cpu`, `uptime` |
 | **Tuning** | `get <KEY>`, `list [PREFIX]` |
 | **Service** | `list`, `status <NAME>` |
 | **Log** | `-u UNIT`, `-l LEVEL`, `-n LIMIT`, `--grep PATTERN`, `--since TS`, `--until TS` |
-| **Security** | `users`, `groups`, `modules`, `status` |
+| **Security** | `users`, `groups`, `modules`, `status`, `persistence`, `detect-hooks <PID>` |
 | **Policy** | `show [--profile NAME]`, `list`, `validate <PATH>` |
 
 **Global flags:** `--json` · `--dry-run` · `--config <PATH>`
@@ -235,7 +235,8 @@ mycelium policy validate policy.toml
 | **1** | ✅ Complete | Core types, Linux backend (read ops), CLI, policy engine |
 | **2** | ✅ Complete | MCP server (35 tools, JSON-RPC stdio, policy enforcement, audit logging) |
 | **3** | ✅ Complete | Write operations (kill, firewall, service control, sysctl, direct memory access) |
-| **4** | 🔜 Next | Windows backend (WMI, registry, WinAPI) |
+| **4** | ✅ Complete | Windows backend (sysinfo, WinAPI, WMI, NetAPI32, SCM, token APIs) |
+| **4.5** | ✅ Complete | Security research (handles, PE parsing, token inspection, persistence, hook detection, memory search) |
 | **5** | 📋 Planned | eBPF probes (syscall tracing, network monitoring) |
 
 ## 🛠️ Development
@@ -244,7 +245,7 @@ mycelium policy validate policy.toml
 # Build
 cargo build --workspace
 
-# Test (19 passing)
+# Test (213 passing)
 cargo test --workspace
 
 # Lint
@@ -254,7 +255,7 @@ cargo clippy --workspace -- -D warnings
 cargo fmt --all -- --check
 ```
 
-**Requirements:** Rust 2024 edition (rustc 1.85+), Linux
+**Requirements:** Rust 2024 edition (rustc 1.85+), Linux or Windows
 
 ## 📚 Documentation
 
@@ -264,9 +265,10 @@ cargo fmt --all -- --check
 | [MCP Server](docs/mcp-server.md) | MCP server setup, tool list, policy integration, audit logging |
 | [CLI Reference](docs/cli.md) | Every command with flags, arguments, and output examples |
 | [Policy Engine](docs/policy.md) | Rules, roles, capabilities, filters, evaluation algorithm |
-| [Platform API](docs/platform-api.md) | All 36 trait methods with signatures and error handling |
+| [Platform API](docs/platform-api.md) | All 46 trait methods with signatures and error handling |
 | [Type Reference](docs/types.md) | Every struct, enum, and field across all modules |
 | [Linux Backend](docs/linux-backend.md) | Data sources, `/proc` paths, permission matrix, limitations |
+| [Windows Backend](docs/windows-backend.md) | Data sources, API mapping, size limits, permission matrix |
 | [Development Guide](docs/development.md) | Build, test, conventions, adding methods and backends |
 
 ## 📄 License

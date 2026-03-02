@@ -59,3 +59,50 @@ pub struct LsmStatus {
 	pub enabled: bool,
 	pub mode: String,
 }
+
+/// The type of persistence mechanism found.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum PersistenceType {
+	RegistryRun,
+	ScheduledTask,
+	Service,
+	StartupFolder,
+	WmiSubscription,
+	ComHijack,
+}
+
+/// A discovered persistence entry.
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct PersistenceEntry {
+	pub persistence_type: PersistenceType,
+	pub name: String,
+	pub location: String,
+	pub value: String,
+	pub enabled: bool,
+	pub description: Option<String>,
+}
+
+/// The type of API hook detected.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum HookType {
+	InlineHook,
+	IatHook,
+	EatHook,
+}
+
+/// A detected API hook.
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct HookInfo {
+	pub hook_type: HookType,
+	pub module: String,
+	pub function: String,
+	pub address: u64,
+	pub expected_bytes: Vec<u8>,
+	pub actual_bytes: Vec<u8>,
+	pub destination: Option<u64>,
+	pub destination_module: Option<String>,
+}

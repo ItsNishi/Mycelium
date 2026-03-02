@@ -3,7 +3,7 @@
 use rmcp::ErrorData as McpError;
 use rmcp::model::CallToolResult;
 
-use super::response::{dry_run_text, err_text, ok_json, ok_text};
+use super::response::{dry_run_text, err_text, mapped_err, ok_json, ok_text};
 use crate::MyceliumMcpService;
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
@@ -56,7 +56,7 @@ pub async fn handle_get(svc: &MyceliumMcpService, req: KeyRequest) -> Result<Cal
 			svc.log_failure("tuning_get", &e.to_string());
 			err_text(&e.to_string())
 		}
-		Err(e) => err_text(&format!("task join error: {e}")),
+		Err(e) => svc.handle_join_error("tuning_get", e),
 	}
 }
 
@@ -86,7 +86,7 @@ pub async fn handle_list(svc: &MyceliumMcpService, req: PrefixRequest) -> Result
 			svc.log_failure("tuning_list", &e.to_string());
 			err_text(&e.to_string())
 		}
-		Err(e) => err_text(&format!("task join error: {e}")),
+		Err(e) => svc.handle_join_error("tuning_list", e),
 	}
 }
 
@@ -100,6 +100,9 @@ pub async fn handle_set(svc: &MyceliumMcpService, req: SetRequest) -> Result<Cal
 		..Default::default()
 	};
 	if let Some(result) = svc.check_policy_with_context("tuning_set", Some(&resource), Some(&ctx)) {
+		return result;
+	}
+	if let Some(result) = svc.check_rate_limit("tuning_set") {
 		return result;
 	}
 	if svc.is_dry_run() {
@@ -126,8 +129,8 @@ pub async fn handle_set(svc: &MyceliumMcpService, req: SetRequest) -> Result<Cal
 		}
 		Ok(Err(e)) => {
 			svc.log_failure("tuning_set", &e.to_string());
-			err_text(&e.to_string())
+			mapped_err(&e, None)
 		}
-		Err(e) => err_text(&format!("task join error: {e}")),
+		Err(e) => svc.handle_join_error("tuning_set", e),
 	}
 }

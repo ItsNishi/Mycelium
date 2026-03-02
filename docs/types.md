@@ -91,6 +91,132 @@ pub enum Signal {
 
 Also derives `Copy`, `PartialEq`, `Eq`.
 
+### ThreadInfo
+
+```rust
+pub struct ThreadInfo {
+    pub tid: u32,
+    pub pid: u32,
+    pub priority: i32,
+}
+```
+
+### ProcessModule
+
+```rust
+pub struct ProcessModule {
+    pub name: String,              // e.g. "ntdll.dll"
+    pub path: String,              // full path
+    pub base_address: u64,
+    pub size: u64,
+}
+```
+
+### PrivilegeInfo
+
+```rust
+pub struct PrivilegeInfo {
+    pub name: String,              // e.g. "SeDebugPrivilege"
+    pub enabled: bool,             // true if currently enabled in the token
+}
+```
+
+### HandleInfo
+
+```rust
+pub struct HandleInfo {
+    pub handle_value: u64,
+    pub object_type: String,       // e.g. "File", "Key", "Mutant", "Section"
+    pub name: Option<String>,      // e.g. "\Device\HarddiskVolume3\Windows\System32\ntdll.dll"
+    pub access_mask: u32,
+}
+```
+
+### PeTarget
+
+```rust
+pub enum PeTarget {
+    Pid(u32),                      // Read PE from process memory
+    Path(String),                  // Read PE from file on disk
+}
+```
+
+### PeInfo
+
+```rust
+pub struct PeInfo {
+    pub machine: String,           // e.g. "AMD64", "I386"
+    pub characteristics: Vec<String>, // e.g. ["EXECUTABLE_IMAGE", "LARGE_ADDRESS_AWARE"]
+    pub entry_point: u64,
+    pub image_base: u64,
+    pub image_size: u32,
+    pub timestamp: u64,
+    pub subsystem: String,         // e.g. "WINDOWS_CUI", "WINDOWS_GUI"
+    pub sections: Vec<PeSection>,
+    pub imports: Vec<PeImport>,
+    pub exports: Vec<PeExport>,
+}
+```
+
+### PeSection
+
+```rust
+pub struct PeSection {
+    pub name: String,              // e.g. ".text", ".rdata", ".data"
+    pub virtual_address: u64,
+    pub virtual_size: u32,
+    pub raw_size: u32,
+    pub characteristics: Vec<String>, // e.g. ["CNT_CODE", "MEM_EXECUTE", "MEM_READ"]
+}
+```
+
+### PeImport
+
+```rust
+pub struct PeImport {
+    pub dll_name: String,          // e.g. "KERNEL32.dll"
+    pub functions: Vec<String>,    // e.g. ["CreateFileW", "ReadFile"]
+}
+```
+
+### PeExport
+
+```rust
+pub struct PeExport {
+    pub ordinal: u16,
+    pub name: Option<String>,
+    pub rva: u32,
+}
+```
+
+### TokenInfo
+
+```rust
+pub struct TokenInfo {
+    pub pid: u32,
+    pub user: String,              // e.g. "DESKTOP-ABC\User"
+    pub integrity_level: String,   // e.g. "High", "Medium", "System"
+    pub token_type: String,        // e.g. "Primary", "Impersonation"
+    pub impersonation_level: Option<String>, // e.g. "Delegation", "Impersonation"
+    pub elevation_type: String,    // e.g. "Full", "Limited", "Default"
+    pub is_elevated: bool,
+    pub is_restricted: bool,
+    pub session_id: u32,
+    pub groups: Vec<TokenGroup>,
+    pub privileges: Vec<PrivilegeInfo>,
+}
+```
+
+### TokenGroup
+
+```rust
+pub struct TokenGroup {
+    pub name: String,              // e.g. "BUILTIN\Administrators"
+    pub sid: String,               // e.g. "S-1-5-32-544"
+    pub attributes: Vec<String>,   // e.g. ["SE_GROUP_ENABLED", "SE_GROUP_OWNER"]
+}
+```
+
 ---
 
 ## Memory Types
@@ -136,6 +262,46 @@ pub struct MemoryRegion {
     pub pathname: Option<String>, // "/lib/libc.so", "[heap]", "[stack]"
 }
 ```
+
+### SearchPattern
+
+What to search for in process memory.
+
+```rust
+pub enum SearchPattern {
+    Bytes(Vec<u8>),               // Raw bytes (hex-encoded in MCP/CLI)
+    Utf8(String),                 // UTF-8 string
+    Utf16(String),                // UTF-16LE string
+}
+```
+
+### MemoryMatch
+
+A single match found during memory search.
+
+```rust
+pub struct MemoryMatch {
+    pub address: u64,              // Absolute address of the match
+    pub region_start: u64,         // Start of the containing memory region
+    pub region_permissions: String, // e.g. "rw--"
+    pub region_pathname: Option<String>,
+    pub context_bytes: Vec<u8>,    // Bytes around the match for context
+}
+```
+
+### MemorySearchOptions
+
+Options controlling memory search behavior.
+
+```rust
+pub struct MemorySearchOptions {
+    pub max_matches: usize,        // Max matches before stopping (default 100)
+    pub context_size: usize,       // Context bytes around each match (default 32)
+    pub permissions_filter: String, // e.g. "rw" for readable+writable only
+}
+```
+
+Derives `Default` (`max_matches: 100`, `context_size: 32`, `permissions_filter: ""`).
 
 ---
 
@@ -505,6 +671,65 @@ pub struct LsmStatus {
     pub mode: String,
 }
 ```
+
+### PersistenceEntry
+
+A Windows persistence mechanism entry (registry run key, scheduled task, service, etc.).
+
+```rust
+pub struct PersistenceEntry {
+    pub persistence_type: PersistenceType,
+    pub name: String,
+    pub location: String,          // e.g. registry path, task folder
+    pub value: String,             // e.g. command line, executable path
+    pub enabled: bool,
+    pub description: Option<String>,
+}
+```
+
+### PersistenceType
+
+```rust
+pub enum PersistenceType {
+    RegistryRun,
+    ScheduledTask,
+    Service,
+    StartupFolder,
+    WmiSubscription,
+    ComHijack,
+}
+```
+
+Also derives `Copy`, `PartialEq`, `Eq`.
+
+### HookInfo
+
+A detected API hook (inline, IAT, or EAT) in a process.
+
+```rust
+pub struct HookInfo {
+    pub hook_type: HookType,
+    pub module: String,            // e.g. "ntdll.dll"
+    pub function: String,          // e.g. "NtCreateFile"
+    pub address: u64,              // Address of the hooked function
+    pub expected_bytes: Vec<u8>,   // Original bytes from disk
+    pub actual_bytes: Vec<u8>,     // Current bytes in memory
+    pub destination: Option<u64>,  // Where the hook redirects to
+    pub destination_module: Option<String>, // Module containing the destination
+}
+```
+
+### HookType
+
+```rust
+pub enum HookType {
+    InlineHook,                    // Modified function prologue (JMP, MOV+JMP, PUSH+RET)
+    IatHook,                       // Modified Import Address Table entry
+    EatHook,                       // Modified Export Address Table entry
+}
+```
+
+Also derives `Copy`, `PartialEq`, `Eq`.
 
 ---
 

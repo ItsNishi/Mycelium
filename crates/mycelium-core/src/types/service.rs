@@ -10,6 +10,7 @@ pub struct ServiceInfo {
 	pub enabled: bool,
 	pub pid: Option<u32>,
 	pub description: Option<String>,
+	pub dependencies: Vec<String>,
 }
 
 /// Service runtime state.

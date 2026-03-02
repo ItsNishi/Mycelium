@@ -1,6 +1,8 @@
 //! Mycelium MCP server library.
 
 pub mod audit;
+pub mod error_mapping;
+pub mod rate_limit;
 pub mod tools;
 
 use std::sync::Arc;
@@ -14,6 +16,7 @@ use mycelium_core::audit::{AuditEntry, AuditLog, AuditOutcome};
 use mycelium_core::platform::Platform;
 use mycelium_core::policy::Policy;
 
+use rate_limit::RateLimiter;
 use tools::response::err_text;
 
 /// The MCP service that wraps Mycelium's platform, policy, and audit layers.
@@ -23,6 +26,7 @@ pub struct MyceliumMcpService {
 	policy: Arc<Policy>,
 	audit: Arc<dyn AuditLog>,
 	agent_name: String,
+	rate_limiter: Arc<RateLimiter>,
 	tool_router: ToolRouter<Self>,
 }
 
@@ -33,11 +37,13 @@ impl MyceliumMcpService {
 		audit: Arc<dyn AuditLog>,
 		agent_name: String,
 	) -> Self {
+		let rate_limiter = Arc::new(RateLimiter::new(policy.rate_limits.clone()));
 		Self {
 			platform,
 			policy,
 			audit,
 			agent_name,
+			rate_limiter,
 			tool_router: Self::create_tool_router(),
 		}
 	}
@@ -90,6 +96,32 @@ impl MyceliumMcpService {
 		None
 	}
 
+	/// Check the rate limiter for a destructive operation.
+	/// Returns Some(result) if rate limited, None if allowed.
+	pub fn check_rate_limit(
+		&self,
+		tool_name: &str,
+	) -> Option<Result<CallToolResult, McpError>> {
+		match self.rate_limiter.check(tool_name) {
+			Ok(()) => None,
+			Err(e) => {
+				let msg = e.to_string();
+				self.audit.log(&AuditEntry {
+					timestamp: current_timestamp(),
+					agent: self.agent_name.clone(),
+					profile: self.agent_name.clone(),
+					tool: tool_name.into(),
+					resource: None,
+					allowed: true,
+					dry_run: false,
+					reason: Some(msg.clone()),
+					outcome: AuditOutcome::RateLimited,
+				});
+				Some(err_text(&msg))
+			}
+		}
+	}
+
 	/// Whether the effective policy is in dry-run mode.
 	pub fn is_dry_run(&self) -> bool {
 		self.policy.effective(&self.agent_name).is_dry_run()
@@ -108,6 +140,17 @@ impl MyceliumMcpService {
 			reason: None,
 			outcome: AuditOutcome::Success,
 		});
+	}
+
+	/// Handle a task join error: log the failure and return an error response.
+	pub fn handle_join_error(
+		&self,
+		tool_name: &str,
+		err: tokio::task::JoinError,
+	) -> Result<CallToolResult, McpError> {
+		let msg = format!("task join error: {err}");
+		self.log_failure(tool_name, &msg);
+		err_text(&msg)
 	}
 
 	/// Log a failed tool invocation (allowed but errored).

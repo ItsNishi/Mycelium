@@ -12,8 +12,8 @@ Mycelium/
 │   ├── mycelium-core/       Core types, traits, errors, policy engine
 │   ├── mycelium-linux/      Linux backend (/proc, /sys, nix)
 │   ├── mycelium-cli/        CLI binary (clap)
-│   ├── mycelium-mcp/        MCP server (35 tools, rmcp 0.17, stdio)
-│   └── mycelium-windows/    Windows backend (Phase 4, placeholder)
+│   ├── mycelium-mcp/        MCP server (43 tools, rmcp 0.17, stdio)
+│   └── mycelium-windows/    Windows backend (sysinfo, WinAPI, WMI)
 ├── examples/
 │   └── policy.toml          Example policy configuration
 ├── docs/                    Documentation (this folder)
@@ -27,8 +27,8 @@ Mycelium/
 | `mycelium-core` | Types, `Platform` trait, `MyceliumError`, policy engine. Zero dependencies by default; optional `serde` and `toml` features. | None (or `serde`/`toml` opt-in) |
 | `mycelium-linux` | Implements `Platform` for Linux. Reads `/proc`, `/sys`, calls `systemctl`/`journalctl`. | `mycelium-core`, `nix 0.29` |
 | `mycelium-cli` | Binary `mycelium` with subcommands for every Platform method. Table and JSON output. | `mycelium-core` (serde, toml), `mycelium-linux`, `clap 4`, `serde_json` |
-| `mycelium-mcp` | MCP server exposing all 35 Platform methods as tools via JSON-RPC stdio transport. | `mycelium-core` (serde, toml), `mycelium-linux`, `rmcp 0.17`, `tokio`, `clap 4`, `schemars` |
-| `mycelium-windows` | Windows backend using WMI/winreg. *(Phase 4, not yet implemented)* | `mycelium-core` |
+| `mycelium-mcp` | MCP server exposing all 43 tools via JSON-RPC stdio transport. | `mycelium-core` (serde, toml), `mycelium-linux`, `rmcp 0.17`, `tokio`, `clap 4`, `schemars` |
+| `mycelium-windows` | Windows backend using sysinfo, WinAPI, WMI, NetAPI32, and winreg. Implements all 46 Platform methods. | `mycelium-core`, `sysinfo`, `windows 0.61`, `wmi`, `winreg` |
 
 ## Data Flow
 
@@ -55,11 +55,11 @@ Mycelium/
                 ┌────────┴────────┐
                 │                 │
                 ▼                 ▼
-        ┌──────────────┐  ┌──────────────┐
-        │ LinuxPlatform│  │  (future)    │
-        │ /proc  /sys  │  │  WinPlatform │
-        │ systemctl    │  │  WMI/winreg  │
-        └──────────────┘  └──────────────┘
+        ┌──────────────┐  ┌────────────────┐
+        │ LinuxPlatform│  │WindowsPlatform │
+        │ /proc  /sys  │  │ sysinfo WinAPI │
+        │ systemctl    │  │ WMI  winreg    │
+        └──────────────┘  └────────────────┘
 ```
 
 For the CLI path, `mycelium-cli` calls `Platform` methods directly (no MCP layer):
@@ -84,17 +84,18 @@ OutputFormat::Json ◄──────────── Vec<ProcessInfo>
 | **1** | Complete | Core types, Linux backend (read ops), CLI, policy engine |
 | **2** | Complete | MCP server (35 tools, JSON-RPC stdio, policy enforcement, audit logging) |
 | **3** | Complete | Write operations (kill, firewall, service control, sysctl, direct memory access) |
-| **4** | Not started | Windows backend (WMI, registry, WinAPI) |
+| **4** | Complete | Windows backend (sysinfo, WinAPI, WMI, NetAPI32, SCM, token APIs) |
+| **4.5** | Complete | Security research features (handles, PE parsing, token inspection, persistence scanning, hook detection, memory pattern search) |
 | **5** | Not started | eBPF probes (syscall tracing, network monitoring) |
 
 ### Phase 1 Scope
 
-- 35 Platform methods fully implemented on Linux (30 read + 5 write + 3 sensitive)
+- 46 Platform methods (35 read + 7 write + 4 sensitive) — Linux implements core set, Windows implements all
 - All write and sensitive operations gated by policy capabilities
 - Policy engine with roles, capabilities, resource filters, specificity-based evaluation
 - CLI with table and JSON output for every read operation
 - Policy management commands (show, list, validate)
-- 19 unit tests (13 policy evaluation + 6 TOML config parsing)
+- 213+ unit tests (policy evaluation, TOML config parsing, Windows backend helpers)
 
 ### Phase 2 Scope
 

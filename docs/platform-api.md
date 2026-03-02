@@ -6,7 +6,7 @@ The `Platform` trait defines the interface that all OS backends implement. Every
 
 ```rust
 pub trait Platform: Send + Sync {
-    // 35 methods: 27 read + 5 write + 3 sensitive (memory access)
+    // 46 methods: 35 read + 7 write + 4 sensitive
 }
 ```
 
@@ -14,7 +14,7 @@ All methods are synchronous. The MCP server wraps calls with `tokio::task::spawn
 
 ## Methods by Category
 
-### Process (4 methods)
+### Process (11 methods)
 
 | Method | Signature | Read/Write |
 |--------|-----------|------------|
@@ -22,8 +22,17 @@ All methods are synchronous. The MCP server wraps calls with `tokio::task::spawn
 | `inspect_process` | `(&self, pid: u32) -> Result<ProcessInfo>` | Read |
 | `process_resources` | `(&self, pid: u32) -> Result<ProcessResource>` | Read |
 | `kill_process` | `(&self, pid: u32, signal: Signal) -> Result<()>` | **Write** |
+| `list_process_threads` | `(&self, pid: u32) -> Result<Vec<ThreadInfo>>` | Read |
+| `list_process_modules` | `(&self, pid: u32) -> Result<Vec<ProcessModule>>` | Read |
+| `process_environment` | `(&self, pid: u32) -> Result<Vec<(String, String)>>` | Read |
+| `list_process_privileges` | `(&self, pid: u32) -> Result<Vec<PrivilegeInfo>>` | Read |
+| `list_process_handles` | `(&self, pid: u32) -> Result<Vec<HandleInfo>>` | Read |
+| `inspect_pe` | `(&self, target: &PeTarget) -> Result<PeInfo>` | Read |
+| `inspect_process_token` | `(&self, pid: u32) -> Result<TokenInfo>` | Read |
 
-### Memory (5 methods)
+Methods from `list_process_threads` onwards have default implementations that return `Err(MyceliumError::Unsupported(...))`, so backends that don't implement them compile without changes.
+
+### Memory (7 methods)
 
 | Method | Signature | Read/Write |
 |--------|-----------|------------|
@@ -32,6 +41,10 @@ All methods are synchronous. The MCP server wraps calls with `tokio::task::spawn
 | `process_memory_maps` | `(&self, pid: u32) -> Result<Vec<MemoryRegion>>` | **Sensitive** |
 | `read_process_memory` | `(&self, pid: u32, address: u64, size: usize) -> Result<Vec<u8>>` | **Sensitive** |
 | `write_process_memory` | `(&self, pid: u32, address: u64, data: &[u8]) -> Result<usize>` | **Write** |
+| `search_process_memory` | `(&self, pid: u32, pattern: &SearchPattern, options: &MemorySearchOptions) -> Result<Vec<MemoryMatch>>` | **Sensitive** |
+| `protect_process_memory` | `(&self, pid: u32, address: u64, size: usize, protection: &str) -> Result<String>` | **Write** |
+
+`search_process_memory` and `protect_process_memory` have default implementations that return `Err(MyceliumError::Unsupported(...))`.
 
 ### Network (7 methods)
 
@@ -87,7 +100,7 @@ All methods are synchronous. The MCP server wraps calls with `tokio::task::spawn
 |--------|-----------|------------|
 | `read_logs` | `(&self, query: &LogQuery) -> Result<Vec<LogEntry>>` | Read |
 
-### Security (4 methods)
+### Security (6 methods)
 
 | Method | Signature | Read/Write |
 |--------|-----------|------------|
@@ -95,6 +108,10 @@ All methods are synchronous. The MCP server wraps calls with `tokio::task::spawn
 | `list_groups` | `(&self) -> Result<Vec<GroupInfo>>` | Read |
 | `list_kernel_modules` | `(&self) -> Result<Vec<KernelModule>>` | Read |
 | `security_status` | `(&self) -> Result<SecurityStatus>` | Read |
+| `list_persistence_entries` | `(&self) -> Result<Vec<PersistenceEntry>>` | Read |
+| `detect_hooks` | `(&self, pid: u32) -> Result<Vec<HookInfo>>` | **Sensitive** |
+
+`list_persistence_entries` and `detect_hooks` have default implementations that return `Err(MyceliumError::Unsupported(...))`.
 
 ## ProbePlatform Trait
 

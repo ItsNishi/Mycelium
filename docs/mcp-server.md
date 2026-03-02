@@ -1,6 +1,6 @@
 # MCP Server
 
-The `mycelium-mcp` binary exposes all 35 Platform methods as MCP tools over a JSON-RPC stdio transport. AI agents connect, discover tools via `tools/list`, and call them with typed JSON parameters. Every call is evaluated against the policy engine and logged to the audit trail.
+The `mycelium-mcp` binary exposes all 43 Platform methods as MCP tools over a JSON-RPC stdio transport. AI agents connect, discover tools via `tools/list`, and call them with typed JSON parameters. Every call is evaluated against the policy engine and logged to the audit trail.
 
 ## Building
 
@@ -74,9 +74,9 @@ The server responds to `initialize`, `notifications/initialized`, `tools/list`, 
 
 ## Tool List
 
-All 35 tools organized by category. Tools without parameters take an empty `arguments: {}` object. Tools with parameters require a JSON object matching the listed schema.
+All 43 tools organized by category. Tools without parameters take an empty `arguments: {}` object. Tools with parameters require a JSON object matching the listed schema.
 
-### Process (4 tools)
+### Process (9 tools)
 
 | Tool | Parameters | Description |
 |------|-----------|-------------|
@@ -84,8 +84,13 @@ All 35 tools organized by category. Tools without parameters take an empty `argu
 | `process_inspect` | `{ pid: u32 }` | Get detailed info for a single process |
 | `process_resources` | `{ pid: u32 }` | Get CPU, memory, I/O usage for a process |
 | `process_kill` | `{ pid: u32, signal: String }` | Send a signal (TERM, KILL, HUP, etc.) |
+| `process_environment` | `{ pid: u32 }` | Get environment variables for a process |
+| `process_privileges` | `{ pid: u32 }` | List token privileges for a process |
+| `process_handles` | `{ pid: u32 }` | List open handles (files, registry keys, mutexes, etc.) |
+| `process_pe_inspect` | `{ pid?: u32, path?: String }` | Parse PE headers (imports, exports, sections, characteristics) |
+| `process_token` | `{ pid: u32 }` | Inspect token security details (integrity, groups, elevation) |
 
-### Memory (5 tools)
+### Memory (6 tools)
 
 | Tool | Parameters | Description |
 |------|-----------|-------------|
@@ -94,6 +99,7 @@ All 35 tools organized by category. Tools without parameters take an empty `argu
 | `memory_maps` | `{ pid: u32 }` | List memory regions (maps) for a process |
 | `memory_read` | `{ pid: u32, address: u64, size: u64 }` | Read raw bytes from process virtual memory |
 | `memory_write` | `{ pid: u32, address: u64, hex_data: String }` | Write raw bytes to process virtual memory |
+| `memory_search` | `{ pid: u32, hex_pattern?: String, utf8_pattern?: String, utf16_pattern?: String, max_matches?: u64, context_size?: u64, permissions_filter?: String }` | Search process memory for byte patterns, UTF-8 or UTF-16 strings |
 
 ### Network (7 tools)
 
@@ -149,7 +155,7 @@ All 35 tools organized by category. Tools without parameters take an empty `argu
 
 `level` accepts: `emergency`, `alert`, `critical`, `error`, `warning`, `notice`, `info`, `debug`. `since`/`until` are Unix epoch seconds.
 
-### Security (4 tools)
+### Security (6 tools)
 
 | Tool | Parameters | Description |
 |------|-----------|-------------|
@@ -157,6 +163,8 @@ All 35 tools organized by category. Tools without parameters take an empty `argu
 | `security_groups` | None | List system groups |
 | `security_modules` | None | List loaded kernel modules |
 | `security_status` | None | Security status (SELinux, AppArmor, firewall, SSH) |
+| `security_persistence` | None | Scan Windows persistence mechanisms (registry, services, tasks, startup, WMI, COM) |
+| `security_detect_hooks` | `{ pid: u32 }` | Detect API hooks (inline, IAT, EAT) in a process |
 
 ## Response Format
 
@@ -230,7 +238,7 @@ Fields:
 │  main.rs          lib.rs            tools/mod.rs     │
 │  ┌──────────┐    ┌──────────────┐  ┌──────────────┐ │
 │  │ CLI args │───▶│ MCP Service  │──│ Tool Router  │ │
-│  │ stdio()  │    │ check_policy │  │ 35 #[tool]   │ │
+│  │ stdio()  │    │ check_policy │  │ 43 #[tool]   │ │
 │  └──────────┘    │ log_success  │  │ methods      │ │
 │                  │ log_failure  │  └──────┬───────┘ │
 │                  └──────┬───────┘         │         │

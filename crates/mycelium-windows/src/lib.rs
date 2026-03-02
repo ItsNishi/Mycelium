@@ -2,9 +2,14 @@
 
 #![cfg(target_os = "windows")]
 
+mod handle;
+mod hooks;
 mod memory;
 mod network;
+mod pe;
+mod persistence;
 mod platform;
+mod privilege;
 mod process;
 mod security;
 mod service;

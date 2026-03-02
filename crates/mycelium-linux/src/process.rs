@@ -256,6 +256,30 @@ pub fn process_resources(pid: u32) -> Result<ProcessResource> {
 	})
 }
 
+pub fn process_environment(pid: u32) -> Result<Vec<(String, String)>> {
+	let path = format!("/proc/{pid}/environ");
+	let content = fs::read(&path).map_err(|e| {
+		if e.kind() == std::io::ErrorKind::NotFound {
+			MyceliumError::NotFound(format!("process {pid}"))
+		} else if e.kind() == std::io::ErrorKind::PermissionDenied {
+			MyceliumError::PermissionDenied(format!("cannot read {path}"))
+		} else {
+			MyceliumError::IoError(e)
+		}
+	})?;
+
+	let text = String::from_utf8_lossy(&content);
+	let vars: Vec<(String, String)> = text
+		.split('\0')
+		.filter(|s| !s.is_empty())
+		.filter_map(|entry| {
+			entry.split_once('=').map(|(k, v)| (k.to_string(), v.to_string()))
+		})
+		.collect();
+
+	Ok(vars)
+}
+
 pub fn kill_process(pid: u32, signal: Signal) -> Result<()> {
 	use nix::errno::Errno;
 

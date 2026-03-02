@@ -42,12 +42,18 @@ pub fn list_interfaces() -> Result<Vec<NetworkInterface>> {
 		// Get IP addresses from /proc/net/if_inet6 and ip parsing
 		let (ipv4, ipv6) = get_ip_addresses(&name);
 
+		let speed_mbps = read_sys_net(&name, "speed")
+			.and_then(|s| s.parse::<i64>().ok())
+			.filter(|&v| v > 0)
+			.map(|v| v as u64);
+
 		interfaces.push(NetworkInterface {
 			name,
 			mac_address: mac,
 			ipv4_addresses: ipv4,
 			ipv6_addresses: ipv6,
 			mtu,
+			speed_mbps,
 			state,
 			rx_bytes: read_sys_net_stat(&entry.file_name().to_string_lossy(), "rx_bytes"),
 			tx_bytes: read_sys_net_stat(&entry.file_name().to_string_lossy(), "tx_bytes"),

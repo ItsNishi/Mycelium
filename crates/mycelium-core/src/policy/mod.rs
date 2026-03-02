@@ -6,12 +6,24 @@ pub mod config;
 pub mod profile;
 pub mod rule;
 
+use std::collections::HashMap;
+
 use profile::Profile;
 use rule::{Action, PolicyRule, ResourceContext, tool_category};
 
 pub use capability::Capability;
 pub use profile::Role;
 pub use rule::ResourceFilter;
+
+/// Per-tool rate limit configuration.
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct RateLimit {
+	/// Maximum number of calls allowed within the window.
+	pub max_calls: u32,
+	/// Window duration in seconds.
+	pub window_secs: u64,
+}
 
 /// Top-level policy configuration.
 #[derive(Debug, Clone)]
@@ -20,6 +32,8 @@ pub struct Policy {
 	pub profiles: Vec<Profile>,
 	pub default_profile: String,
 	pub dry_run: bool,
+	/// Per-tool rate limits for destructive operations.
+	pub rate_limits: HashMap<String, RateLimit>,
 }
 
 impl Default for Policy {
@@ -34,6 +48,7 @@ impl Default for Policy {
 			profiles: vec![],
 			default_profile: "default".into(),
 			dry_run: false,
+			rate_limits: HashMap::new(),
 		}
 	}
 }
@@ -146,6 +161,22 @@ mod tests {
 	use profile::Profile;
 	use rule::{Action, PolicyRule, RuleTarget};
 
+	/// Helper: build a Policy from parts, filling in rate_limits as empty.
+	fn policy(
+		global_rules: Vec<PolicyRule>,
+		profiles: Vec<Profile>,
+		default_profile: &str,
+		dry_run: bool,
+	) -> Policy {
+		Policy {
+			global_rules,
+			profiles,
+			default_profile: default_profile.into(),
+			dry_run,
+			rate_limits: HashMap::new(),
+		}
+	}
+
 	fn allow_all() -> PolicyRule {
 		PolicyRule {
 			action: Action::Allow,
@@ -183,19 +214,19 @@ mod tests {
 
 	#[test]
 	fn read_only_denies_writes() {
-		let policy = Policy {
-			global_rules: vec![],
-			profiles: vec![Profile {
+		let p = policy(
+			vec![],
+			vec![Profile {
 				name: "readonly-bot".into(),
 				role: Role::ReadOnly,
 				rules: vec![],
 				dry_run: false,
 			}],
-			default_profile: "readonly-bot".into(),
-			dry_run: false,
-		};
+			"readonly-bot",
+			false,
+		);
 
-		let effective = policy.effective("readonly-bot");
+		let effective = p.effective("readonly-bot");
 
 		// Reads should be allowed
 		assert!(effective.evaluate("process_list", None).allowed);
@@ -212,24 +243,15 @@ mod tests {
 
 	#[test]
 	fn operator_allows_service_and_process_management() {
-		let policy = Policy {
-			global_rules: vec![],
-			profiles: vec![Profile {
-				name: "ops".into(),
-				role: Role::Operator,
-				rules: vec![],
-				dry_run: false,
-			}],
-			default_profile: "ops".into(),
-			dry_run: false,
-		};
-
-		let effective = policy.effective("ops");
-
+		let p = policy(
+			vec![],
+			vec![Profile { name: "ops".into(), role: Role::Operator, rules: vec![], dry_run: false }],
+			"ops", false,
+		);
+		let effective = p.effective("ops");
 		assert!(effective.evaluate("process_list", None).allowed);
 		assert!(effective.evaluate("process_kill", None).allowed);
 		assert!(effective.evaluate("service_action", None).allowed);
-
 		assert!(!effective.evaluate("tuning_set", None).allowed);
 		assert!(!effective.evaluate("firewall_add", None).allowed);
 		assert!(!effective.evaluate("probe_attach", None).allowed);
@@ -237,20 +259,12 @@ mod tests {
 
 	#[test]
 	fn admin_allows_everything() {
-		let policy = Policy {
-			global_rules: vec![],
-			profiles: vec![Profile {
-				name: "admin".into(),
-				role: Role::Admin,
-				rules: vec![],
-				dry_run: false,
-			}],
-			default_profile: "admin".into(),
-			dry_run: false,
-		};
-
-		let effective = policy.effective("admin");
-
+		let p = policy(
+			vec![],
+			vec![Profile { name: "admin".into(), role: Role::Admin, rules: vec![], dry_run: false }],
+			"admin", false,
+		);
+		let effective = p.effective("admin");
 		assert!(effective.evaluate("process_kill", None).allowed);
 		assert!(effective.evaluate("tuning_set", None).allowed);
 		assert!(effective.evaluate("firewall_add", None).allowed);
@@ -260,42 +274,28 @@ mod tests {
 
 	#[test]
 	fn profile_rules_override_role_preset() {
-		// read-only role but allow process_kill specifically
-		let policy = Policy {
-			global_rules: vec![],
-			profiles: vec![Profile {
-				name: "special".into(),
-				role: Role::ReadOnly,
-				rules: vec![allow_tool("process_kill")],
-				dry_run: false,
-			}],
-			default_profile: "special".into(),
-			dry_run: false,
-		};
-
-		let effective = policy.effective("special");
-
-		// Tool-level Allow (specificity 3) beats Capability-level Deny (specificity 1)
+		let p = policy(
+			vec![],
+			vec![Profile { name: "special".into(), role: Role::ReadOnly, rules: vec![allow_tool("process_kill")], dry_run: false }],
+			"special", false,
+		);
+		let effective = p.effective("special");
 		assert!(effective.evaluate("process_kill", None).allowed);
-		// Other write tools still denied
 		assert!(!effective.evaluate("tuning_set", None).allowed);
 	}
 
 	#[test]
 	fn resource_filter_on_service_names() {
-		let policy = Policy {
-			global_rules: vec![allow_all()],
-			profiles: vec![Profile {
+		let p = policy(
+			vec![allow_all()],
+			vec![Profile {
 				name: "limited".into(),
 				role: Role::Custom,
 				rules: vec![
 					PolicyRule {
 						action: Action::Allow,
 						target: RuleTarget::Tool("service_action".into()),
-						filter: Some(ResourceFilter::ServiceNames(vec![
-							"nginx".into(),
-							"redis".into(),
-						])),
+						filter: Some(ResourceFilter::ServiceNames(vec!["nginx".into(), "redis".into()])),
 						reason: None,
 					},
 					PolicyRule {
@@ -307,32 +307,20 @@ mod tests {
 				],
 				dry_run: false,
 			}],
-			default_profile: "limited".into(),
-			dry_run: false,
-		};
-
-		let effective = policy.effective("limited");
-
-		// nginx is allowed (filter matches)
-		let ctx = ResourceContext {
-			service_name: Some("nginx".into()),
-			..Default::default()
-		};
+			"limited", false,
+		);
+		let effective = p.effective("limited");
+		let ctx = ResourceContext { service_name: Some("nginx".into()), ..Default::default() };
 		assert!(effective.evaluate("service_action", Some(&ctx)).allowed);
-
-		// postgresql is denied (filter doesn't match, falls through to deny)
-		let ctx = ResourceContext {
-			service_name: Some("postgresql".into()),
-			..Default::default()
-		};
+		let ctx = ResourceContext { service_name: Some("postgresql".into()), ..Default::default() };
 		assert!(!effective.evaluate("service_action", Some(&ctx)).allowed);
 	}
 
 	#[test]
 	fn resource_filter_on_tunable_prefixes() {
-		let policy = Policy {
-			global_rules: vec![allow_all()],
-			profiles: vec![Profile {
+		let p = policy(
+			vec![allow_all()],
+			vec![Profile {
 				name: "tuner".into(),
 				role: Role::Custom,
 				rules: vec![PolicyRule {
@@ -343,44 +331,24 @@ mod tests {
 				}],
 				dry_run: false,
 			}],
-			default_profile: "tuner".into(),
-			dry_run: false,
-		};
-
-		let effective = policy.effective("tuner");
-
-		// net.* allowed (filter doesn't match, falls through to global allow)
-		let ctx = ResourceContext {
-			tunable_key: Some("net.ipv4.ip_forward".into()),
-			..Default::default()
-		};
+			"tuner", false,
+		);
+		let effective = p.effective("tuner");
+		let ctx = ResourceContext { tunable_key: Some("net.ipv4.ip_forward".into()), ..Default::default() };
 		assert!(effective.evaluate("tuning_set", Some(&ctx)).allowed);
-
-		// kernel.* denied
-		let ctx = ResourceContext {
-			tunable_key: Some("kernel.panic".into()),
-			..Default::default()
-		};
+		let ctx = ResourceContext { tunable_key: Some("kernel.panic".into()), ..Default::default() };
 		assert!(!effective.evaluate("tuning_set", Some(&ctx)).allowed);
 	}
 
 	#[test]
 	fn dry_run_propagates() {
-		let policy = Policy {
-			global_rules: vec![allow_all()],
-			profiles: vec![Profile {
-				name: "careful".into(),
-				role: Role::Admin,
-				rules: vec![],
-				dry_run: true,
-			}],
-			default_profile: "careful".into(),
-			dry_run: false,
-		};
-
-		let effective = policy.effective("careful");
+		let p = policy(
+			vec![allow_all()],
+			vec![Profile { name: "careful".into(), role: Role::Admin, rules: vec![], dry_run: true }],
+			"careful", false,
+		);
+		let effective = p.effective("careful");
 		assert!(effective.is_dry_run());
-
 		let decision = effective.evaluate("process_kill", None);
 		assert!(decision.allowed);
 		assert!(decision.dry_run);
@@ -388,141 +356,81 @@ mod tests {
 
 	#[test]
 	fn global_dry_run_overrides_profile() {
-		let policy = Policy {
-			global_rules: vec![allow_all()],
-			profiles: vec![Profile {
-				name: "fast".into(),
-				role: Role::Admin,
-				rules: vec![],
-				dry_run: false,
-			}],
-			default_profile: "fast".into(),
-			dry_run: true,
-		};
-
-		let effective = policy.effective("fast");
+		let p = policy(
+			vec![allow_all()],
+			vec![Profile { name: "fast".into(), role: Role::Admin, rules: vec![], dry_run: false }],
+			"fast", true,
+		);
+		let effective = p.effective("fast");
 		assert!(effective.is_dry_run());
 	}
 
 	#[test]
 	fn unknown_profile_falls_back_to_default() {
-		let policy = Policy {
-			global_rules: vec![],
-			profiles: vec![Profile {
-				name: "default".into(),
-				role: Role::ReadOnly,
-				rules: vec![],
-				dry_run: false,
-			}],
-			default_profile: "default".into(),
-			dry_run: false,
-		};
-
-		let effective = policy.effective("nonexistent-agent");
+		let p = policy(
+			vec![],
+			vec![Profile { name: "default".into(), role: Role::ReadOnly, rules: vec![], dry_run: false }],
+			"default", false,
+		);
+		let effective = p.effective("nonexistent-agent");
 		assert!(!effective.evaluate("process_kill", None).allowed);
 	}
 
 	#[test]
 	fn last_rule_wins_at_same_specificity() {
-		// When both allow and deny exist at same specificity, last rule wins.
-		// Deny after allow -> denied.
-		let policy = Policy {
-			global_rules: vec![],
-			profiles: vec![Profile {
+		let p = policy(
+			vec![],
+			vec![Profile {
 				name: "test".into(),
 				role: Role::Custom,
 				rules: vec![
 					allow_tool("process_kill"),
-					PolicyRule {
-						action: Action::Deny,
-						target: RuleTarget::Tool("process_kill".into()),
-						filter: None,
-						reason: Some("explicitly denied".into()),
-					},
+					PolicyRule { action: Action::Deny, target: RuleTarget::Tool("process_kill".into()), filter: None, reason: Some("explicitly denied".into()) },
 				],
 				dry_run: false,
 			}],
-			default_profile: "test".into(),
-			dry_run: false,
-		};
-
-		let effective = policy.effective("test");
+			"test", false,
+		);
+		let effective = p.effective("test");
 		assert!(!effective.evaluate("process_kill", None).allowed);
 
-		// Allow after deny -> allowed.
-		let policy2 = Policy {
-			global_rules: vec![PolicyRule {
-				action: Action::Deny,
-				target: RuleTarget::Tool("process_kill".into()),
-				filter: None,
-				reason: None,
-			}],
-			profiles: vec![Profile {
-				name: "override".into(),
-				role: Role::Custom,
-				rules: vec![allow_tool("process_kill")],
-				dry_run: false,
-			}],
-			default_profile: "override".into(),
-			dry_run: false,
-		};
-
-		let effective2 = policy2.effective("override");
+		let p2 = policy(
+			vec![PolicyRule { action: Action::Deny, target: RuleTarget::Tool("process_kill".into()), filter: None, reason: None }],
+			vec![Profile { name: "override".into(), role: Role::Custom, rules: vec![allow_tool("process_kill")], dry_run: false }],
+			"override", false,
+		);
+		let effective2 = p2.effective("override");
 		assert!(effective2.evaluate("process_kill", None).allowed);
 	}
 
 	#[test]
 	fn more_specific_rule_wins() {
-		let policy = Policy {
-			global_rules: vec![],
-			profiles: vec![Profile {
+		let p = policy(
+			vec![],
+			vec![Profile {
 				name: "test".into(),
 				role: Role::Custom,
 				rules: vec![
-					// Category deny (specificity 2)
-					PolicyRule {
-						action: Action::Deny,
-						target: RuleTarget::Category("process".into()),
-						filter: None,
-						reason: Some("deny all process tools".into()),
-					},
-					// Tool allow (specificity 3) -- should win
+					PolicyRule { action: Action::Deny, target: RuleTarget::Category("process".into()), filter: None, reason: Some("deny all process tools".into()) },
 					allow_tool("process_list"),
 				],
 				dry_run: false,
 			}],
-			default_profile: "test".into(),
-			dry_run: false,
-		};
-
-		let effective = policy.effective("test");
+			"test", false,
+		);
+		let effective = p.effective("test");
 		assert!(effective.evaluate("process_list", None).allowed);
 		assert!(!effective.evaluate("process_kill", None).allowed);
 	}
 
 	#[test]
 	fn global_rules_combine_with_profile() {
-		let policy = Policy {
-			global_rules: vec![
-				allow_all(),
-				deny_capability(Capability::ProbeManage),
-			],
-			profiles: vec![Profile {
-				name: "admin".into(),
-				role: Role::Admin,
-				rules: vec![],
-				dry_run: false,
-			}],
-			default_profile: "admin".into(),
-			dry_run: false,
-		};
-
-		let effective = policy.effective("admin");
-		// Admin role adds Allow All (specificity 0)
-		// Global has Deny ProbeManage (specificity 1) which is more specific
-		// But admin's Allow All is at same specificity 0 as global's Allow All
-		// The probe deny at specificity 1 beats the allow at specificity 0
-		// However, admin should be able to override this -- let's verify behavior
+		let p = policy(
+			vec![allow_all(), deny_capability(Capability::ProbeManage)],
+			vec![Profile { name: "admin".into(), role: Role::Admin, rules: vec![], dry_run: false }],
+			"admin", false,
+		);
+		let effective = p.effective("admin");
 		assert!(effective.evaluate("process_list", None).allowed);
 	}
 }

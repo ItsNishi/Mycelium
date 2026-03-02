@@ -9,6 +9,7 @@ pub struct NetworkInterface {
 	pub ipv4_addresses: Vec<String>,
 	pub ipv6_addresses: Vec<String>,
 	pub mtu: u32,
+	pub speed_mbps: Option<u64>,
 	pub state: InterfaceState,
 	pub rx_bytes: u64,
 	pub tx_bytes: u64,

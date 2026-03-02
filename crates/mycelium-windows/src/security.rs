@@ -1,7 +1,14 @@
-//! Security information via WMI and system commands.
+//! Security information via NetAPI32, WMI, and system commands.
 
+use std::collections::HashMap;
 use std::process::Command;
 
+use windows::core::{PCWSTR, PWSTR};
+use windows::Win32::NetworkManagement::NetManagement::{
+	LOCALGROUP_INFO_1, LOCALGROUP_MEMBERS_INFO_3, MAX_PREFERRED_LENGTH,
+	NET_USER_ENUM_FILTER_FLAGS, NetApiBufferFree, NetLocalGroupEnum, NetLocalGroupGetMembers,
+	NetUserEnum, USER_INFO_3,
+};
 use wmi::{COMLibrary, WMIConnection};
 
 use mycelium_core::error::{MyceliumError, Result};
@@ -9,22 +16,254 @@ use mycelium_core::types::{
 	GroupInfo, KernelModule, ModuleState, SecurityStatus, UserInfo,
 };
 
-#[derive(serde::Deserialize)]
-#[allow(non_snake_case)]
-struct WmiUserAccount {
-	Name: Option<String>,
-	FullName: Option<String>,
-	SID: Option<String>,
-	Disabled: Option<bool>,
-	LocalAccount: Option<bool>,
+/// Read a null-terminated `PWSTR`, returning an empty string if null.
+fn pwstr_to_string(p: PWSTR) -> String {
+	if p.is_null() {
+		String::new()
+	} else {
+		unsafe { p.to_string().unwrap_or_default() }
+	}
+}
+
+/// Encode a Rust string as a null-terminated wide string.
+fn to_wide(s: &str) -> Vec<u16> {
+	s.encode_utf16().chain(std::iter::once(0)).collect()
+}
+
+/// Get the members of a local group using `NetLocalGroupGetMembers` (level 3).
+fn get_group_members_api(group_name: &str) -> Vec<String> {
+	let wide = to_wide(group_name);
+	let mut buf: *mut u8 = std::ptr::null_mut();
+	let mut entries_read: u32 = 0;
+	let mut total_entries: u32 = 0;
+
+	let ret = unsafe {
+		NetLocalGroupGetMembers(
+			PCWSTR::null(),
+			PCWSTR(wide.as_ptr()),
+			3,
+			&mut buf,
+			MAX_PREFERRED_LENGTH,
+			&mut entries_read,
+			&mut total_entries,
+			None,
+		)
+	};
+
+	if ret != 0 || buf.is_null() {
+		return Vec::new();
+	}
+
+	let members = unsafe {
+		std::slice::from_raw_parts(buf as *const LOCALGROUP_MEMBERS_INFO_3, entries_read as usize)
+	};
+
+	let result: Vec<String> = members
+		.iter()
+		.map(|m| pwstr_to_string(m.lgrmi3_domainandname))
+		.filter(|s| !s.is_empty())
+		.collect();
+
+	unsafe {
+		let _ = NetApiBufferFree(Some(buf as *const _));
+	}
+
+	result
+}
+
+/// Build a map of username → [group names] by enumerating all local groups and their members.
+fn build_user_groups_map() -> HashMap<String, Vec<String>> {
+	let mut map: HashMap<String, Vec<String>> = HashMap::new();
+
+	let mut buf: *mut u8 = std::ptr::null_mut();
+	let mut entries_read: u32 = 0;
+	let mut total_entries: u32 = 0;
+
+	let ret = unsafe {
+		NetLocalGroupEnum(
+			PCWSTR::null(),
+			1,
+			&mut buf,
+			MAX_PREFERRED_LENGTH,
+			&mut entries_read,
+			&mut total_entries,
+			None,
+		)
+	};
+
+	if ret != 0 || buf.is_null() {
+		return map;
+	}
+
+	let groups = unsafe {
+		std::slice::from_raw_parts(buf as *const LOCALGROUP_INFO_1, entries_read as usize)
+	};
+
+	for group in groups {
+		let group_name = pwstr_to_string(group.lgrpi1_name);
+		if group_name.is_empty() {
+			continue;
+		}
+
+		let members = get_group_members_api(&group_name);
+		for member in &members {
+			// Members may be in DOMAIN\User format — extract just the username
+			let username = member.rsplit('\\').next().unwrap_or(member);
+			map.entry(username.to_string())
+				.or_default()
+				.push(group_name.clone());
+		}
+	}
+
+	unsafe {
+		let _ = NetApiBufferFree(Some(buf as *const _));
+	}
+
+	map
+}
+
+pub fn list_users() -> Result<Vec<UserInfo>> {
+	let mut buf: *mut u8 = std::ptr::null_mut();
+	let mut entries_read: u32 = 0;
+	let mut total_entries: u32 = 0;
+	let mut resume_handle: u32 = 0;
+
+	let ret = unsafe {
+		NetUserEnum(
+			PCWSTR::null(),
+			3,
+			NET_USER_ENUM_FILTER_FLAGS(2), // FILTER_NORMAL_ACCOUNT
+			&mut buf,
+			MAX_PREFERRED_LENGTH,
+			&mut entries_read,
+			&mut total_entries,
+			Some(&mut resume_handle),
+		)
+	};
+
+	if ret != 0 || buf.is_null() {
+		return Err(MyceliumError::OsError {
+			code: ret as i32,
+			message: format!("NetUserEnum failed with code {ret}"),
+		});
+	}
+
+	let user_infos = unsafe {
+		std::slice::from_raw_parts(buf as *const USER_INFO_3, entries_read as usize)
+	};
+
+	// Build group membership map
+	let groups_map = build_user_groups_map();
+
+	let users = user_infos
+		.iter()
+		.map(|u| {
+			let name = pwstr_to_string(u.usri3_name);
+			let home_raw = pwstr_to_string(u.usri3_home_dir);
+			let home = if home_raw.is_empty() {
+				format!(r"C:\Users\{name}")
+			} else {
+				home_raw
+			};
+			let groups = groups_map
+				.get(&name)
+				.cloned()
+				.unwrap_or_default();
+
+			UserInfo {
+				name,
+				uid: u.usri3_user_id,
+				gid: u.usri3_primary_group_id,
+				home,
+				shell: "cmd.exe".to_string(),
+				groups,
+			}
+		})
+		.collect();
+
+	unsafe {
+		let _ = NetApiBufferFree(Some(buf as *const _));
+	}
+
+	Ok(users)
+}
+
+pub fn list_groups() -> Result<Vec<GroupInfo>> {
+	let mut buf: *mut u8 = std::ptr::null_mut();
+	let mut entries_read: u32 = 0;
+	let mut total_entries: u32 = 0;
+
+	let ret = unsafe {
+		NetLocalGroupEnum(
+			PCWSTR::null(),
+			1,
+			&mut buf,
+			MAX_PREFERRED_LENGTH,
+			&mut entries_read,
+			&mut total_entries,
+			None,
+		)
+	};
+
+	if ret != 0 || buf.is_null() {
+		return Err(MyceliumError::OsError {
+			code: ret as i32,
+			message: format!("NetLocalGroupEnum failed with code {ret}"),
+		});
+	}
+
+	let group_infos = unsafe {
+		std::slice::from_raw_parts(buf as *const LOCALGROUP_INFO_1, entries_read as usize)
+	};
+
+	let groups = group_infos
+		.iter()
+		.map(|g| {
+			let name = pwstr_to_string(g.lgrpi1_name);
+			let members = get_group_members_api(&name)
+				.into_iter()
+				.map(|m| {
+					// Normalize DOMAIN\User → User
+					m.rsplit('\\')
+						.next()
+						.unwrap_or(&m)
+						.to_string()
+				})
+				.collect();
+
+			GroupInfo {
+				name,
+				gid: 0,
+				members,
+			}
+		})
+		.collect();
+
+	unsafe {
+		let _ = NetApiBufferFree(Some(buf as *const _));
+	}
+
+	Ok(groups)
 }
 
 #[derive(serde::Deserialize)]
 #[allow(non_snake_case)]
-struct WmiGroup {
+struct WmiSystemDriver {
 	Name: Option<String>,
-	SID: Option<String>,
-	LocalAccount: Option<bool>,
+	State: Option<String>,
+	PathName: Option<String>,
+}
+
+/// Expand driver path prefixes like `\SystemRoot\` and `\??\` to real paths.
+fn expand_driver_path(path: &str) -> String {
+	let win_dir = std::env::var("SystemRoot").unwrap_or_else(|_| r"C:\Windows".to_string());
+	if let Some(rest) = path.strip_prefix(r"\SystemRoot\") {
+		format!(r"{win_dir}\{rest}")
+	} else if let Some(rest) = path.strip_prefix(r"\??\") {
+		rest.to_string()
+	} else {
+		path.to_string()
+	}
 }
 
 fn new_wmi_connection() -> Result<WMIConnection> {
@@ -38,129 +277,45 @@ fn new_wmi_connection() -> Result<WMIConnection> {
 	})
 }
 
-pub fn list_users() -> Result<Vec<UserInfo>> {
+pub fn list_kernel_modules() -> Result<Vec<KernelModule>> {
 	let wmi = new_wmi_connection()?;
 
-	let results: Vec<WmiUserAccount> = wmi
-		.raw_query("SELECT Name, FullName, SID, Disabled, LocalAccount FROM Win32_UserAccount WHERE LocalAccount = TRUE")
+	let results: Vec<WmiSystemDriver> = wmi
+		.raw_query("SELECT Name, State, PathName FROM Win32_SystemDriver")
 		.map_err(|e| MyceliumError::OsError {
 			code: -1,
-			message: format!("WMI user query failed: {e}"),
+			message: format!("WMI driver query failed: {e}"),
 		})?;
 
-	let users = results
+	let modules = results
 		.into_iter()
-		.map(|u| {
-			let name = u.Name.unwrap_or_default();
-			let home = format!(r"C:\Users\{name}");
+		.map(|d| {
+			let name = d.Name.unwrap_or_default();
+			let state = match d.State.as_deref() {
+				Some("Running") => ModuleState::Live,
+				_ => ModuleState::Unknown,
+			};
+			let size_bytes = d
+				.PathName
+				.as_deref()
+				.map(|p| {
+					let expanded = expand_driver_path(p);
+					std::fs::metadata(&expanded)
+						.map(|m| m.len())
+						.unwrap_or(0)
+				})
+				.unwrap_or(0);
 
-			UserInfo {
+			KernelModule {
 				name,
-				uid: 0,
-				gid: 0,
-				home,
-				shell: "cmd.exe".to_string(),
-				groups: Vec::new(),
+				size_bytes,
+				used_by: Vec::new(),
+				state,
 			}
 		})
 		.collect();
-
-	Ok(users)
-}
-
-pub fn list_groups() -> Result<Vec<GroupInfo>> {
-	let wmi = new_wmi_connection()?;
-
-	let results: Vec<WmiGroup> = wmi
-		.raw_query("SELECT Name, SID, LocalAccount FROM Win32_Group WHERE LocalAccount = TRUE")
-		.map_err(|e| MyceliumError::OsError {
-			code: -1,
-			message: format!("WMI group query failed: {e}"),
-		})?;
-
-	let groups = results
-		.into_iter()
-		.map(|g| GroupInfo {
-			name: g.Name.unwrap_or_default(),
-			gid: 0,
-			members: Vec::new(),
-		})
-		.collect();
-
-	Ok(groups)
-}
-
-pub fn list_kernel_modules() -> Result<Vec<KernelModule>> {
-	// Use driverquery to list loaded drivers (Windows equivalent of kernel modules)
-	let output = Command::new("driverquery")
-		.args(["/v", "/fo", "csv"])
-		.output()
-		.map_err(|e| MyceliumError::OsError {
-			code: e.raw_os_error().unwrap_or(-1),
-			message: format!("failed to run driverquery: {e}"),
-		})?;
-
-	if !output.status.success() {
-		let stderr = String::from_utf8_lossy(&output.stderr);
-		return Err(MyceliumError::OsError {
-			code: output.status.code().unwrap_or(-1),
-			message: format!("driverquery failed: {stderr}"),
-		});
-	}
-
-	let stdout = String::from_utf8_lossy(&output.stdout);
-	let mut modules = Vec::new();
-	let mut first = true;
-
-	for line in stdout.lines() {
-		if first {
-			first = false;
-			continue; // skip header
-		}
-
-		let fields: Vec<&str> = parse_csv_line(line);
-		if fields.len() < 4 {
-			continue;
-		}
-
-		let name = fields[0].trim_matches('"').to_string();
-		let state_str = fields.get(3).map(|s| s.trim_matches('"')).unwrap_or("");
-
-		let state = if state_str == "Running" {
-			ModuleState::Live
-		} else {
-			ModuleState::Unknown
-		};
-
-		modules.push(KernelModule {
-			name,
-			size_bytes: 0,
-			used_by: Vec::new(),
-			state,
-		});
-	}
 
 	Ok(modules)
-}
-
-fn parse_csv_line(line: &str) -> Vec<&str> {
-	// Simple CSV parser for driverquery output
-	let mut fields = Vec::new();
-	let mut start = 0;
-	let mut in_quotes = false;
-
-	for (i, ch) in line.char_indices() {
-		match ch {
-			'"' => in_quotes = !in_quotes,
-			',' if !in_quotes => {
-				fields.push(&line[start..i]);
-				start = i + 1;
-			}
-			_ => {}
-		}
-	}
-	fields.push(&line[start..]);
-	fields
 }
 
 pub fn security_status() -> Result<SecurityStatus> {
@@ -217,19 +372,87 @@ fn check_ssh_password_auth() -> bool {
 	// Check if sshd_config exists and has PasswordAuthentication
 	let sshd_config = r"C:\ProgramData\ssh\sshd_config";
 	match std::fs::read_to_string(sshd_config) {
-		Ok(content) => {
-			for line in content.lines() {
-				let trimmed = line.trim();
-				if trimmed.starts_with('#') {
-					continue;
-				}
-				if trimmed.starts_with("PasswordAuthentication") {
-					return trimmed.contains("yes");
-				}
-			}
-			// Default is yes if not explicitly set
-			true
-		}
+		Ok(content) => parse_ssh_password_auth(&content),
 		Err(_) => false, // OpenSSH not installed
+	}
+}
+
+/// Parse sshd_config content and return whether password auth is enabled.
+fn parse_ssh_password_auth(content: &str) -> bool {
+	for line in content.lines() {
+		let trimmed = line.trim();
+		if trimmed.starts_with('#') {
+			continue;
+		}
+		if trimmed.starts_with("PasswordAuthentication") {
+			return trimmed.contains("yes");
+		}
+	}
+	// Default is yes if not explicitly set
+	true
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	// -- expand_driver_path --
+
+	#[test]
+	fn test_expand_driver_path_system_root() {
+		let result = expand_driver_path(r"\SystemRoot\system32\drivers\ntfs.sys");
+		// Should replace \SystemRoot\ with the actual system root
+		assert!(result.ends_with(r"\system32\drivers\ntfs.sys"));
+		assert!(!result.starts_with(r"\SystemRoot"));
+	}
+
+	#[test]
+	fn test_expand_driver_path_question_prefix() {
+		let result = expand_driver_path(r"\??\C:\Windows\system32\drivers\ntfs.sys");
+		assert_eq!(result, r"C:\Windows\system32\drivers\ntfs.sys");
+	}
+
+	#[test]
+	fn test_expand_driver_path_normal() {
+		let result = expand_driver_path(r"C:\Windows\system32\drivers\ntfs.sys");
+		assert_eq!(result, r"C:\Windows\system32\drivers\ntfs.sys");
+	}
+
+	#[test]
+	fn test_expand_driver_path_empty() {
+		assert_eq!(expand_driver_path(""), "");
+	}
+
+	// -- parse_ssh_password_auth --
+
+	#[test]
+	fn test_ssh_password_auth_yes() {
+		let content = "# Comment\nPasswordAuthentication yes\n";
+		assert!(parse_ssh_password_auth(content));
+	}
+
+	#[test]
+	fn test_ssh_password_auth_no() {
+		let content = "PasswordAuthentication no\n";
+		assert!(!parse_ssh_password_auth(content));
+	}
+
+	#[test]
+	fn test_ssh_password_auth_commented_out() {
+		// Commented out means default = yes
+		let content = "# PasswordAuthentication no\n";
+		assert!(parse_ssh_password_auth(content));
+	}
+
+	#[test]
+	fn test_ssh_password_auth_empty() {
+		// Not set means default = yes
+		assert!(parse_ssh_password_auth(""));
+	}
+
+	#[test]
+	fn test_ssh_password_auth_mixed() {
+		let content = "# PasswordAuthentication no\nPort 22\nPasswordAuthentication yes\n";
+		assert!(parse_ssh_password_auth(content));
 	}
 }

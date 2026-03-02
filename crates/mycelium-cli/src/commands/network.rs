@@ -137,19 +137,24 @@ impl NetworkCmd {
 impl TableDisplay for NetworkInterface {
 	fn print_header() {
 		println!(
-			"{:<15} {:<18} {:<8} {:<18} {:>12} {:>12}",
-			"NAME", "MAC", "STATE", "IPv4", "RX", "TX"
+			"{:<15} {:<18} {:<8} {:>8} {:<18} {:>12} {:>12}",
+			"NAME", "MAC", "STATE", "SPEED", "IPv4", "RX", "TX"
 		);
 	}
 
 	fn print_row(&self) {
 		let state = format!("{:?}", self.state);
 		let ipv4 = self.ipv4_addresses.first().cloned().unwrap_or_default();
+		let speed = self
+			.speed_mbps
+			.map(|s| format!("{s} Mb"))
+			.unwrap_or_else(|| "-".into());
 		println!(
-			"{:<15} {:<18} {:<8} {:<18} {:>12} {:>12}",
+			"{:<15} {:<18} {:<8} {:>8} {:<18} {:>12} {:>12}",
 			self.name,
 			self.mac_address.as_deref().unwrap_or("-"),
 			state,
+			speed,
 			ipv4,
 			human_bytes(self.rx_bytes),
 			human_bytes(self.tx_bytes),

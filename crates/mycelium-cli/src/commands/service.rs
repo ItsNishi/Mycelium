@@ -74,19 +74,25 @@ impl ServiceCmd {
 impl TableDisplay for ServiceInfo {
 	fn print_header() {
 		println!(
-			"{:<30} {:<10} {:<8} {:>7} DESCRIPTION",
-			"NAME", "STATE", "ENABLED", "PID"
+			"{:<30} {:<10} {:<8} {:>7} {:<30} DESCRIPTION",
+			"NAME", "STATE", "ENABLED", "PID", "DEPENDS"
 		);
 	}
 
 	fn print_row(&self) {
 		let state = format!("{:?}", self.state);
+		let deps = if self.dependencies.is_empty() {
+			"-".to_string()
+		} else {
+			truncate(&self.dependencies.join(","), 30)
+		};
 		println!(
-			"{:<30} {:<10} {:<8} {:>7} {}",
+			"{:<30} {:<10} {:<8} {:>7} {:<30} {}",
 			truncate(&self.name, 30),
 			state,
 			if self.enabled { "yes" } else { "no" },
 			self.pid.map(|p| p.to_string()).unwrap_or_default(),
+			deps,
 			self.description.as_deref().unwrap_or("-"),
 		);
 	}

@@ -1,7 +1,10 @@
 //! LinuxPlatform -- the primary Platform implementation for Linux.
 
 use mycelium_core::error::Result;
-use mycelium_core::platform::Platform;
+use mycelium_core::platform::{
+	MemoryPlatform, NetworkPlatform, ProcessPlatform, SecurityPlatform, ServicePlatform,
+	StoragePlatform, SystemPlatform, TuningPlatform,
+};
 use mycelium_core::types::*;
 
 /// Linux backend using /proc, /sys, nix, and systemd D-Bus.
@@ -19,9 +22,7 @@ impl Default for LinuxPlatform {
 	}
 }
 
-impl Platform for LinuxPlatform {
-	// -- Process --
-
+impl ProcessPlatform for LinuxPlatform {
 	fn list_processes(&self) -> Result<Vec<ProcessInfo>> {
 		crate::process::list_processes()
 	}
@@ -38,8 +39,12 @@ impl Platform for LinuxPlatform {
 		crate::process::kill_process(pid, signal)
 	}
 
-	// -- Memory --
+	fn process_environment(&self, pid: u32) -> Result<Vec<(String, String)>> {
+		crate::process::process_environment(pid)
+	}
+}
 
+impl MemoryPlatform for LinuxPlatform {
 	fn memory_info(&self) -> Result<MemoryInfo> {
 		crate::memory::memory_info()
 	}
@@ -59,9 +64,9 @@ impl Platform for LinuxPlatform {
 	fn write_process_memory(&self, pid: u32, address: u64, data: &[u8]) -> Result<usize> {
 		crate::memory::write_process_memory(pid, address, data)
 	}
+}
 
-	// -- Network --
-
+impl NetworkPlatform for LinuxPlatform {
 	fn list_interfaces(&self) -> Result<Vec<NetworkInterface>> {
 		crate::network::list_interfaces()
 	}
@@ -89,9 +94,9 @@ impl Platform for LinuxPlatform {
 	fn remove_firewall_rule(&self, rule_id: &str) -> Result<()> {
 		crate::network::remove_firewall_rule(rule_id)
 	}
+}
 
-	// -- Storage --
-
+impl StoragePlatform for LinuxPlatform {
 	fn list_disks(&self) -> Result<Vec<DiskInfo>> {
 		crate::storage::list_disks()
 	}
@@ -107,9 +112,9 @@ impl Platform for LinuxPlatform {
 	fn io_stats(&self) -> Result<Vec<IoStats>> {
 		crate::storage::io_stats()
 	}
+}
 
-	// -- System --
-
+impl SystemPlatform for LinuxPlatform {
 	fn system_info(&self) -> Result<SystemInfo> {
 		crate::system::system_info()
 	}
@@ -125,9 +130,9 @@ impl Platform for LinuxPlatform {
 	fn uptime(&self) -> Result<u64> {
 		crate::system::uptime()
 	}
+}
 
-	// -- Tuning --
-
+impl TuningPlatform for LinuxPlatform {
 	fn get_tunable(&self, key: &str) -> Result<TunableValue> {
 		crate::tuning::get_tunable(key)
 	}
@@ -139,9 +144,9 @@ impl Platform for LinuxPlatform {
 	fn set_tunable(&self, key: &str, value: &TunableValue) -> Result<TunableValue> {
 		crate::tuning::set_tunable(key, value)
 	}
+}
 
-	// -- Services --
-
+impl ServicePlatform for LinuxPlatform {
 	fn list_services(&self) -> Result<Vec<ServiceInfo>> {
 		crate::service::list_services()
 	}
@@ -154,14 +159,12 @@ impl Platform for LinuxPlatform {
 		crate::service::service_action(name, action)
 	}
 
-	// -- Logs --
-
 	fn read_logs(&self, query: &LogQuery) -> Result<Vec<LogEntry>> {
 		crate::service::read_logs(query)
 	}
+}
 
-	// -- Security --
-
+impl SecurityPlatform for LinuxPlatform {
 	fn list_users(&self) -> Result<Vec<UserInfo>> {
 		crate::security::list_users()
 	}

@@ -1,6 +1,9 @@
 //! TOML-based policy configuration loading.
 
+use std::collections::HashMap;
+
 use super::Policy;
+use super::RateLimit;
 use super::capability::Capability;
 use super::profile::Profile;
 use super::rule::{Action, PolicyRule, ResourceFilter, RuleTarget};
@@ -44,11 +47,18 @@ pub fn parse_policy_toml(content: &str) -> Result<Policy, String> {
 		}
 	}
 
+	let rate_limits = table
+		.get("rate_limits")
+		.and_then(|v| v.as_table())
+		.map(parse_rate_limits)
+		.unwrap_or_default();
+
 	Ok(Policy {
 		global_rules,
 		profiles,
 		default_profile,
 		dry_run,
+		rate_limits,
 	})
 }
 
@@ -174,6 +184,30 @@ fn parse_filter(val: &toml::Value) -> Option<ResourceFilter> {
 	None
 }
 
+fn parse_rate_limits(table: &toml::map::Map<String, toml::Value>) -> HashMap<String, RateLimit> {
+	let mut limits = HashMap::new();
+	for (tool, val) in table {
+		let max_calls = val
+			.get("max_calls")
+			.and_then(|v| v.as_integer())
+			.unwrap_or(0) as u32;
+		let window_secs = val
+			.get("window_secs")
+			.and_then(|v| v.as_integer())
+			.unwrap_or(60) as u64;
+		if max_calls > 0 {
+			limits.insert(
+				tool.clone(),
+				RateLimit {
+					max_calls,
+					window_secs,
+				},
+			);
+		}
+	}
+	limits
+}
+
 fn parse_profile(name: &str, val: &toml::Value) -> Option<Profile> {
 	let role_str = val.get("role").and_then(|v| v.as_str()).unwrap_or("custom");
 	let role: Role = role_str.parse().ok()?;
@@ -246,6 +280,14 @@ reason = "OpenClaw can only manage nginx, postgresql, redis"
 [profiles.restricted-bot]
 role = "read-only"
 dry_run = true
+
+[rate_limits]
+process_kill = { max_calls = 5, window_secs = 60 }
+memory_write = { max_calls = 10, window_secs = 60 }
+service_action = { max_calls = 10, window_secs = 60 }
+tuning_set = { max_calls = 3, window_secs = 60 }
+firewall_add = { max_calls = 5, window_secs = 60 }
+firewall_remove = { max_calls = 5, window_secs = 60 }
 "#;
 
 	#[test]
@@ -311,6 +353,30 @@ dry_run = true
 			..Default::default()
 		};
 		assert!(!effective.evaluate("tuning_set", Some(&ctx)).allowed);
+	}
+
+	#[test]
+	fn parse_rate_limits_section() {
+		let policy = parse_policy_toml(SAMPLE_POLICY).unwrap();
+		assert_eq!(policy.rate_limits.len(), 6);
+
+		let pk = policy.rate_limits.get("process_kill").unwrap();
+		assert_eq!(pk.max_calls, 5);
+		assert_eq!(pk.window_secs, 60);
+
+		let ts = policy.rate_limits.get("tuning_set").unwrap();
+		assert_eq!(ts.max_calls, 3);
+		assert_eq!(ts.window_secs, 60);
+	}
+
+	#[test]
+	fn no_rate_limits_defaults_to_empty() {
+		let toml = r#"
+[global]
+default_profile = "default"
+"#;
+		let policy = parse_policy_toml(toml).unwrap();
+		assert!(policy.rate_limits.is_empty());
 	}
 
 	#[test]

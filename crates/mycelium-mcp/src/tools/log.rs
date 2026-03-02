@@ -79,6 +79,6 @@ pub async fn handle_read(svc: &MyceliumMcpService, req: LogReadRequest) -> Resul
 			svc.log_failure("log_read", &e.to_string());
 			err_text(&e.to_string())
 		}
-		Err(e) => err_text(&format!("task join error: {e}")),
+		Err(e) => svc.handle_join_error("log_read", e),
 	}
 }

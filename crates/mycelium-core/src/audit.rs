@@ -8,6 +8,7 @@ pub enum AuditOutcome {
 	Denied,
 	DryRun,
 	Failed,
+	RateLimited,
 }
 
 /// A single audit log entry.

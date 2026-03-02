@@ -56,6 +56,46 @@ impl MyceliumMcpService {
 		process::handle_kill(self, req).await
 	}
 
+	#[tool(description = "Get environment variables for a process by PID")]
+	async fn process_environment(
+		&self,
+		Parameters(req): Parameters<process::PidRequest>,
+	) -> Result<CallToolResult, McpError> {
+		process::handle_environment(self, req).await
+	}
+
+	#[tool(description = "List token privileges for a process by PID")]
+	async fn process_privileges(
+		&self,
+		Parameters(req): Parameters<process::PidRequest>,
+	) -> Result<CallToolResult, McpError> {
+		process::handle_privileges(self, req).await
+	}
+
+	#[tool(description = "List open handles (files, registry keys, mutexes, etc.) for a process")]
+	async fn process_handles(
+		&self,
+		Parameters(req): Parameters<process::PidRequest>,
+	) -> Result<CallToolResult, McpError> {
+		process::handle_handles(self, req).await
+	}
+
+	#[tool(description = "Parse PE headers of a process or file. Returns imports, exports, sections, characteristics.")]
+	async fn process_pe_inspect(
+		&self,
+		Parameters(req): Parameters<process::PeInspectRequest>,
+	) -> Result<CallToolResult, McpError> {
+		process::handle_pe_inspect(self, req).await
+	}
+
+	#[tool(description = "Inspect process token security details (integrity, groups, elevation, impersonation)")]
+	async fn process_token(
+		&self,
+		Parameters(req): Parameters<process::PidRequest>,
+	) -> Result<CallToolResult, McpError> {
+		process::handle_token(self, req).await
+	}
+
 	// -- Memory --
 
 	#[tool(description = "Get system-wide memory and swap information")]
@@ -93,6 +133,14 @@ impl MyceliumMcpService {
 		Parameters(req): Parameters<memory::MemoryWriteRequest>,
 	) -> Result<CallToolResult, McpError> {
 		memory::handle_write(self, req).await
+	}
+
+	#[tool(description = "Search process memory for byte patterns, UTF-8 or UTF-16 strings")]
+	async fn memory_search(
+		&self,
+		Parameters(req): Parameters<memory::MemorySearchRequest>,
+	) -> Result<CallToolResult, McpError> {
+		memory::handle_search(self, req).await
 	}
 
 	// -- Network --
@@ -261,5 +309,18 @@ impl MyceliumMcpService {
 	#[tool(description = "Get security status (SELinux, AppArmor, firewall, SSH config)")]
 	async fn security_status(&self) -> Result<CallToolResult, McpError> {
 		security::handle_status(self).await
+	}
+
+	#[tool(description = "Scan Windows persistence mechanisms (registry, services, tasks, startup, WMI, COM)")]
+	async fn security_persistence(&self) -> Result<CallToolResult, McpError> {
+		security::handle_persistence(self).await
+	}
+
+	#[tool(description = "Detect API hooks (inline, IAT, EAT) in a process")]
+	async fn security_detect_hooks(
+		&self,
+		Parameters(req): Parameters<security::DetectHooksRequest>,
+	) -> Result<CallToolResult, McpError> {
+		security::handle_detect_hooks(self, req).await
 	}
 }

@@ -24,7 +24,7 @@ pub async fn handle_disks(svc: &MyceliumMcpService) -> Result<CallToolResult, Mc
 			svc.log_failure("storage_disks", &e.to_string());
 			err_text(&e.to_string())
 		}
-		Err(e) => err_text(&format!("task join error: {e}")),
+		Err(e) => svc.handle_join_error("storage_disks", e),
 	}
 }
 
@@ -46,7 +46,7 @@ pub async fn handle_partitions(svc: &MyceliumMcpService) -> Result<CallToolResul
 			svc.log_failure("storage_partitions", &e.to_string());
 			err_text(&e.to_string())
 		}
-		Err(e) => err_text(&format!("task join error: {e}")),
+		Err(e) => svc.handle_join_error("storage_partitions", e),
 	}
 }
 
@@ -68,7 +68,7 @@ pub async fn handle_mounts(svc: &MyceliumMcpService) -> Result<CallToolResult, M
 			svc.log_failure("storage_mounts", &e.to_string());
 			err_text(&e.to_string())
 		}
-		Err(e) => err_text(&format!("task join error: {e}")),
+		Err(e) => svc.handle_join_error("storage_mounts", e),
 	}
 }
 
@@ -90,6 +90,6 @@ pub async fn handle_io(svc: &MyceliumMcpService) -> Result<CallToolResult, McpEr
 			svc.log_failure("storage_io", &e.to_string());
 			err_text(&e.to_string())
 		}
-		Err(e) => err_text(&format!("task join error: {e}")),
+		Err(e) => svc.handle_join_error("storage_io", e),
 	}
 }

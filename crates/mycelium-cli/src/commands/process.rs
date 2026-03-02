@@ -1,6 +1,9 @@
 use clap::{Subcommand, ValueEnum};
 use mycelium_core::platform::Platform;
-use mycelium_core::types::{ProcessInfo, ProcessResource, Signal};
+use mycelium_core::types::{
+	HandleInfo, PeExport, PeImport, PeInfo, PeSection, PeTarget, PrivilegeInfo, ProcessInfo,
+	ProcessResource, Signal, TokenGroup, TokenInfo,
+};
 
 use crate::output::*;
 
@@ -53,6 +56,35 @@ pub enum ProcessCmd {
 		#[arg(default_value = "term")]
 		signal: SignalArg,
 	},
+	/// Show environment variables for a process
+	Env {
+		/// Process ID
+		pid: u32,
+	},
+	/// List token privileges for a process
+	Privileges {
+		/// Process ID
+		pid: u32,
+	},
+	/// List open handles for a process
+	Handles {
+		/// Process ID
+		pid: u32,
+	},
+	/// Parse PE headers of a process or file
+	Pe {
+		/// Process ID (mutually exclusive with --path)
+		#[arg(conflicts_with = "path")]
+		pid: Option<u32>,
+		/// Path to a PE file (mutually exclusive with pid)
+		#[arg(long)]
+		path: Option<String>,
+	},
+	/// Inspect process token security details
+	Token {
+		/// Process ID
+		pid: u32,
+	},
 }
 
 impl ProcessCmd {
@@ -81,6 +113,51 @@ impl ProcessCmd {
 					Err(e) => eprintln!("error: {e}"),
 				}
 			}
+			Self::Privileges { pid } => match platform.list_process_privileges(*pid) {
+				Ok(privs) => print_list(&privs, format),
+				Err(e) => eprintln!("error: {e}"),
+			},
+			Self::Handles { pid } => match platform.list_process_handles(*pid) {
+				Ok(handles) => print_list(&handles, format),
+				Err(e) => eprintln!("error: {e}"),
+			},
+			Self::Pe { pid, path } => {
+				let target = match (pid, path) {
+					(Some(p), None) => PeTarget::Pid(*p),
+					(None, Some(p)) => PeTarget::Path(p.clone()),
+					_ => {
+						eprintln!("error: exactly one of <PID> or --path must be provided");
+						return;
+					}
+				};
+				match platform.inspect_pe(&target) {
+					Ok(info) => print_pe_info(&info, format),
+					Err(e) => eprintln!("error: {e}"),
+				}
+			}
+			Self::Token { pid } => match platform.inspect_process_token(*pid) {
+				Ok(info) => print_token_info(&info, format),
+				Err(e) => eprintln!("error: {e}"),
+			},
+			Self::Env { pid } => match platform.process_environment(*pid) {
+				Ok(vars) => match format {
+					OutputFormat::Json => {
+						let map: std::collections::BTreeMap<&str, &str> =
+							vars.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
+						match serde_json::to_string_pretty(&map) {
+							Ok(json) => println!("{json}"),
+							Err(e) => eprintln!("error serializing JSON: {e}"),
+						}
+					}
+					OutputFormat::Table => {
+						println!("{:<40} VALUE", "KEY");
+						for (k, v) in &vars {
+							println!("{:<40} {}", truncate(k, 40), truncate(v, 80));
+						}
+					}
+				},
+				Err(e) => eprintln!("error: {e}"),
+			},
 		}
 	}
 }
@@ -106,6 +183,180 @@ impl TableDisplay for ProcessInfo {
 			human_bytes(self.memory_bytes),
 			truncate(&self.command, 50),
 		);
+	}
+}
+
+impl TableDisplay for PrivilegeInfo {
+	fn print_header() {
+		println!("{:<40} ENABLED", "PRIVILEGE");
+	}
+
+	fn print_row(&self) {
+		println!("{:<40} {}", self.name, self.enabled);
+	}
+}
+
+impl TableDisplay for HandleInfo {
+	fn print_header() {
+		println!("{:<10} {:<15} {:>10} NAME", "HANDLE", "TYPE", "ACCESS");
+	}
+
+	fn print_row(&self) {
+		println!(
+			"{:<10} {:<15} 0x{:08x} {}",
+			self.handle_value,
+			truncate(&self.object_type, 15),
+			self.access_mask,
+			self.name.as_deref().unwrap_or(""),
+		);
+	}
+}
+
+impl TableDisplay for PeSection {
+	fn print_header() {
+		println!(
+			"{:<10} {:>12} {:>12} {:>12} FLAGS",
+			"NAME", "VADDR", "VSIZE", "RAWSIZE"
+		);
+	}
+
+	fn print_row(&self) {
+		println!(
+			"{:<10} 0x{:08x} {:>12} {:>12} {}",
+			self.name,
+			self.virtual_address,
+			self.virtual_size,
+			self.raw_size,
+			self.characteristics.join(","),
+		);
+	}
+}
+
+impl TableDisplay for PeImport {
+	fn print_header() {
+		println!("{:<30} FUNCTIONS", "DLL");
+	}
+
+	fn print_row(&self) {
+		println!(
+			"{:<30} {}",
+			truncate(&self.dll_name, 30),
+			self.functions.len(),
+		);
+	}
+}
+
+impl TableDisplay for PeExport {
+	fn print_header() {
+		println!("{:<8} {:>10} NAME", "ORDINAL", "RVA");
+	}
+
+	fn print_row(&self) {
+		println!(
+			"{:<8} 0x{:08x} {}",
+			self.ordinal,
+			self.rva,
+			self.name.as_deref().unwrap_or("(ordinal)"),
+		);
+	}
+}
+
+fn print_pe_info(info: &PeInfo, format: OutputFormat) {
+	match format {
+		OutputFormat::Json => {
+			match serde_json::to_string_pretty(info) {
+				Ok(json) => println!("{json}"),
+				Err(e) => eprintln!("error serializing JSON: {e}"),
+			}
+		}
+		OutputFormat::Table => {
+			println!("Machine:        {}", info.machine);
+			println!("Characteristics: {}", info.characteristics.join(", "));
+			println!("Entry Point:    0x{:x}", info.entry_point);
+			println!("Image Base:     0x{:x}", info.image_base);
+			println!("Image Size:     0x{:x}", info.image_size);
+			println!("Timestamp:      {}", info.timestamp);
+			println!("Subsystem:      {}", info.subsystem);
+			println!();
+			println!("Sections ({}):", info.sections.len());
+			if !info.sections.is_empty() {
+				PeSection::print_header();
+				for s in &info.sections {
+					s.print_row();
+				}
+			}
+			println!();
+			println!("Imports ({} DLLs):", info.imports.len());
+			if !info.imports.is_empty() {
+				PeImport::print_header();
+				for i in &info.imports {
+					i.print_row();
+				}
+			}
+			println!();
+			println!("Exports ({}):", info.exports.len());
+			if !info.exports.is_empty() {
+				PeExport::print_header();
+				for e in &info.exports {
+					e.print_row();
+				}
+			}
+		}
+	}
+}
+
+impl TableDisplay for TokenGroup {
+	fn print_header() {
+		println!("{:<40} {:<50} ATTRIBUTES", "NAME", "SID");
+	}
+
+	fn print_row(&self) {
+		println!(
+			"{:<40} {:<50} {}",
+			truncate(&self.name, 40),
+			truncate(&self.sid, 50),
+			self.attributes.join(","),
+		);
+	}
+}
+
+fn print_token_info(info: &TokenInfo, format: OutputFormat) {
+	match format {
+		OutputFormat::Json => {
+			match serde_json::to_string_pretty(info) {
+				Ok(json) => println!("{json}"),
+				Err(e) => eprintln!("error serializing JSON: {e}"),
+			}
+		}
+		OutputFormat::Table => {
+			println!("PID:              {}", info.pid);
+			println!("User:             {}", info.user);
+			println!("Integrity:        {}", info.integrity_level);
+			println!("Token Type:       {}", info.token_type);
+			if let Some(ref imp) = info.impersonation_level {
+				println!("Impersonation:    {imp}");
+			}
+			println!("Elevation Type:   {}", info.elevation_type);
+			println!("Is Elevated:      {}", info.is_elevated);
+			println!("Is Restricted:    {}", info.is_restricted);
+			println!("Session ID:       {}", info.session_id);
+			println!();
+			println!("Groups ({}):", info.groups.len());
+			if !info.groups.is_empty() {
+				TokenGroup::print_header();
+				for g in &info.groups {
+					g.print_row();
+				}
+			}
+			println!();
+			println!("Privileges ({}):", info.privileges.len());
+			if !info.privileges.is_empty() {
+				PrivilegeInfo::print_header();
+				for p in &info.privileges {
+					p.print_row();
+				}
+			}
+		}
 	}
 }
 

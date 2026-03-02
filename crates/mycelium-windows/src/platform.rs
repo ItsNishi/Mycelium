@@ -1,7 +1,10 @@
 //! WindowsPlatform -- the primary Platform implementation for Windows.
 
 use mycelium_core::error::Result;
-use mycelium_core::platform::Platform;
+use mycelium_core::platform::{
+	MemoryPlatform, NetworkPlatform, ProcessPlatform, SecurityPlatform, ServicePlatform,
+	StoragePlatform, SystemPlatform, TuningPlatform,
+};
 use mycelium_core::types::*;
 
 /// Windows backend using sysinfo, WinAPI, and WMI.
@@ -19,9 +22,7 @@ impl Default for WindowsPlatform {
 	}
 }
 
-impl Platform for WindowsPlatform {
-	// -- Process --
-
+impl ProcessPlatform for WindowsPlatform {
 	fn list_processes(&self) -> Result<Vec<ProcessInfo>> {
 		crate::process::list_processes()
 	}
@@ -38,8 +39,36 @@ impl Platform for WindowsPlatform {
 		crate::process::kill_process(pid, signal)
 	}
 
-	// -- Memory --
+	fn list_process_threads(&self, pid: u32) -> Result<Vec<ThreadInfo>> {
+		crate::process::list_process_threads(pid)
+	}
 
+	fn list_process_modules(&self, pid: u32) -> Result<Vec<ProcessModule>> {
+		crate::process::list_process_modules(pid)
+	}
+
+	fn process_environment(&self, pid: u32) -> Result<Vec<(String, String)>> {
+		crate::process::process_environment(pid)
+	}
+
+	fn list_process_privileges(&self, pid: u32) -> Result<Vec<PrivilegeInfo>> {
+		crate::privilege::enumerate_token_privileges(pid)
+	}
+
+	fn list_process_handles(&self, pid: u32) -> Result<Vec<HandleInfo>> {
+		crate::handle::list_process_handles(pid)
+	}
+
+	fn inspect_pe(&self, target: &PeTarget) -> Result<PeInfo> {
+		crate::pe::inspect_pe(target)
+	}
+
+	fn inspect_process_token(&self, pid: u32) -> Result<TokenInfo> {
+		crate::privilege::inspect_process_token(pid)
+	}
+}
+
+impl MemoryPlatform for WindowsPlatform {
 	fn memory_info(&self) -> Result<MemoryInfo> {
 		crate::memory::memory_info()
 	}
@@ -60,8 +89,27 @@ impl Platform for WindowsPlatform {
 		crate::memory::write_process_memory(pid, address, data)
 	}
 
-	// -- Network --
+	fn search_process_memory(
+		&self,
+		pid: u32,
+		pattern: &SearchPattern,
+		options: &MemorySearchOptions,
+	) -> Result<Vec<MemoryMatch>> {
+		crate::memory::search_process_memory(pid, pattern, options)
+	}
 
+	fn protect_process_memory(
+		&self,
+		pid: u32,
+		address: u64,
+		size: usize,
+		protection: &str,
+	) -> Result<String> {
+		crate::memory::protect_process_memory(pid, address, size, protection)
+	}
+}
+
+impl NetworkPlatform for WindowsPlatform {
 	fn list_interfaces(&self) -> Result<Vec<NetworkInterface>> {
 		crate::network::list_interfaces()
 	}
@@ -89,9 +137,9 @@ impl Platform for WindowsPlatform {
 	fn remove_firewall_rule(&self, rule_id: &str) -> Result<()> {
 		crate::network::remove_firewall_rule(rule_id)
 	}
+}
 
-	// -- Storage --
-
+impl StoragePlatform for WindowsPlatform {
 	fn list_disks(&self) -> Result<Vec<DiskInfo>> {
 		crate::storage::list_disks()
 	}
@@ -107,9 +155,9 @@ impl Platform for WindowsPlatform {
 	fn io_stats(&self) -> Result<Vec<IoStats>> {
 		crate::storage::io_stats()
 	}
+}
 
-	// -- System --
-
+impl SystemPlatform for WindowsPlatform {
 	fn system_info(&self) -> Result<SystemInfo> {
 		crate::system::system_info()
 	}
@@ -125,9 +173,9 @@ impl Platform for WindowsPlatform {
 	fn uptime(&self) -> Result<u64> {
 		crate::system::uptime()
 	}
+}
 
-	// -- Tuning --
-
+impl TuningPlatform for WindowsPlatform {
 	fn get_tunable(&self, key: &str) -> Result<TunableValue> {
 		crate::tuning::get_tunable(key)
 	}
@@ -139,9 +187,9 @@ impl Platform for WindowsPlatform {
 	fn set_tunable(&self, key: &str, value: &TunableValue) -> Result<TunableValue> {
 		crate::tuning::set_tunable(key, value)
 	}
+}
 
-	// -- Services --
-
+impl ServicePlatform for WindowsPlatform {
 	fn list_services(&self) -> Result<Vec<ServiceInfo>> {
 		crate::service::list_services()
 	}
@@ -154,14 +202,12 @@ impl Platform for WindowsPlatform {
 		crate::service::service_action(name, action)
 	}
 
-	// -- Logs --
-
 	fn read_logs(&self, query: &LogQuery) -> Result<Vec<LogEntry>> {
 		crate::service::read_logs(query)
 	}
+}
 
-	// -- Security --
-
+impl SecurityPlatform for WindowsPlatform {
 	fn list_users(&self) -> Result<Vec<UserInfo>> {
 		crate::security::list_users()
 	}
@@ -176,5 +222,13 @@ impl Platform for WindowsPlatform {
 
 	fn security_status(&self) -> Result<SecurityStatus> {
 		crate::security::security_status()
+	}
+
+	fn list_persistence_entries(&self) -> Result<Vec<PersistenceEntry>> {
+		crate::persistence::list_persistence_entries()
+	}
+
+	fn detect_hooks(&self, pid: u32) -> Result<Vec<HookInfo>> {
+		crate::hooks::detect_hooks(pid)
 	}
 }
