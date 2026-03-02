@@ -30,6 +30,8 @@ pub struct ProbeInfo {
 	pub probe_type: ProbeType,
 	pub target: Option<String>,
 	pub events_captured: u64,
+	/// Total events dropped (kernel ring buffer full + userspace channel full).
+	pub events_dropped: u64,
 }
 
 /// A single event captured by a probe.

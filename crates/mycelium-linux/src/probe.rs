@@ -5,7 +5,7 @@
 //! for consumption by `read_probe_events()`.
 
 use std::collections::HashMap as StdHashMap;
-use std::net::Ipv4Addr;
+use std::net::{Ipv4Addr, Ipv6Addr};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::{self, SyncSender};
 use std::sync::{Arc, Mutex};
@@ -14,13 +14,13 @@ use std::time::Duration;
 
 use aya::Ebpf;
 use aya::include_bytes_aligned;
-use aya::maps::{HashMap, MapData, RingBuf};
+use aya::maps::{Array, HashMap, MapData, RingBuf};
 use aya::programs::{RawTracePoint, TracePoint};
 
 use mycelium_core::error::{MyceliumError, Result};
 use mycelium_core::types::{ProbeConfig, ProbeEvent, ProbeHandle, ProbeInfo, ProbeType};
 
-use mycelium_ebpf_common::{NetEvent, SyscallEvent, tcp_state_name};
+use mycelium_ebpf_common::{AF_INET, AF_INET6, NetEvent, SyscallEvent, tcp_state_name};
 
 /// Channel capacity for probe events.
 const EVENT_CHANNEL_CAPACITY: usize = 10_000;
@@ -33,6 +33,7 @@ struct ActiveProbe {
 	probe_type: ProbeType,
 	target: Option<String>,
 	events_captured: Arc<AtomicU64>,
+	events_dropped: Arc<AtomicU64>,
 	events_rx: Mutex<mpsc::Receiver<ProbeEvent>>,
 	shutdown: Arc<AtomicBool>,
 	poll_thread: Option<JoinHandle<()>>,
@@ -73,13 +74,18 @@ pub fn attach_probe(config: &ProbeConfig, state: &ProbeState) -> Result<ProbeHan
 	let (tx, rx) = mpsc::sync_channel::<ProbeEvent>(EVENT_CHANNEL_CAPACITY);
 	let shutdown = Arc::new(AtomicBool::new(false));
 	let events_captured = Arc::new(AtomicU64::new(0));
+	let events_dropped = Arc::new(AtomicU64::new(0));
 
 	match config.probe_type {
 		ProbeType::SyscallTrace => {
-			attach_syscall_trace(&mut ebpf, &tx, &shutdown, &events_captured)?;
+			attach_syscall_trace(
+				&mut ebpf, &tx, &shutdown, &events_captured, &events_dropped,
+			)?;
 		}
 		ProbeType::NetworkMonitor => {
-			attach_net_monitor(&mut ebpf, &tx, &shutdown, &events_captured)?;
+			attach_net_monitor(
+				&mut ebpf, &tx, &shutdown, &events_captured, &events_dropped,
+			)?;
 		}
 	}
 
@@ -94,6 +100,7 @@ pub fn attach_probe(config: &ProbeConfig, state: &ProbeState) -> Result<ProbeHan
 		probe_type: config.probe_type,
 		target: config.target.clone(),
 		events_captured,
+		events_dropped,
 		events_rx: Mutex::new(rx),
 		shutdown,
 		poll_thread: None,
@@ -128,14 +135,23 @@ pub fn detach_probe(handle: ProbeHandle, state: &ProbeState) -> Result<()> {
 /// List all active probes.
 pub fn list_probes(state: &ProbeState) -> Result<Vec<ProbeInfo>> {
 	let active_map = state.active.lock().unwrap();
+	let ebpf_map = state.ebpf_instances.lock().unwrap();
 	let mut infos = Vec::with_capacity(active_map.len());
 
 	for (&handle_id, probe) in active_map.iter() {
+		let userspace_drops = probe.events_dropped.load(Ordering::Relaxed);
+
+		// Read kernel-side drop counters from the DROP_COUNTERS array map.
+		let kernel_drops = ebpf_map.get(&handle_id).map_or(0u64, |ebpf| {
+			read_kernel_drop_counter(ebpf, probe.probe_type)
+		});
+
 		infos.push(ProbeInfo {
 			handle: ProbeHandle(handle_id),
 			probe_type: probe.probe_type,
 			target: probe.target.clone(),
 			events_captured: probe.events_captured.load(Ordering::Relaxed),
+			events_dropped: userspace_drops + kernel_drops,
 		});
 	}
 
@@ -167,6 +183,7 @@ fn attach_syscall_trace(
 	tx: &SyncSender<ProbeEvent>,
 	shutdown: &Arc<AtomicBool>,
 	events_captured: &Arc<AtomicU64>,
+	events_dropped: &Arc<AtomicU64>,
 ) -> Result<()> {
 	let program: &mut RawTracePoint = ebpf
 		.program_mut("syscall_trace")
@@ -194,11 +211,12 @@ fn attach_syscall_trace(
 	let tx = tx.clone();
 	let shutdown = Arc::clone(shutdown);
 	let events_captured = Arc::clone(events_captured);
+	let events_dropped = Arc::clone(events_dropped);
 
 	thread::Builder::new()
 		.name("mycelium-syscall-poll".into())
 		.spawn(move || {
-			poll_syscall_ring_buffer(ring_buf, tx, shutdown, events_captured);
+			poll_syscall_ring_buffer(ring_buf, tx, shutdown, events_captured, events_dropped);
 		})
 		.map_err(|e| MyceliumError::ProbeError(format!("failed to spawn poll thread: {e}")))?;
 
@@ -210,6 +228,7 @@ fn attach_net_monitor(
 	tx: &SyncSender<ProbeEvent>,
 	shutdown: &Arc<AtomicBool>,
 	events_captured: &Arc<AtomicU64>,
+	events_dropped: &Arc<AtomicU64>,
 ) -> Result<()> {
 	let program: &mut TracePoint = ebpf
 		.program_mut("net_monitor")
@@ -240,11 +259,12 @@ fn attach_net_monitor(
 	let tx = tx.clone();
 	let shutdown = Arc::clone(shutdown);
 	let events_captured = Arc::clone(events_captured);
+	let events_dropped = Arc::clone(events_dropped);
 
 	thread::Builder::new()
 		.name("mycelium-net-poll".into())
 		.spawn(move || {
-			poll_net_ring_buffer(ring_buf, tx, shutdown, events_captured);
+			poll_net_ring_buffer(ring_buf, tx, shutdown, events_captured, events_dropped);
 		})
 		.map_err(|e| MyceliumError::ProbeError(format!("failed to spawn poll thread: {e}")))?;
 
@@ -313,6 +333,7 @@ fn poll_syscall_ring_buffer(
 	tx: SyncSender<ProbeEvent>,
 	shutdown: Arc<AtomicBool>,
 	events_captured: Arc<AtomicU64>,
+	events_dropped: Arc<AtomicU64>,
 ) {
 	while !shutdown.load(Ordering::Relaxed) {
 		while let Some(item) = ring_buf.next() {
@@ -343,8 +364,10 @@ fn poll_syscall_ring_buffer(
 			events_captured.fetch_add(1, Ordering::Relaxed);
 
 			if tx.try_send(probe_event).is_err() {
-				// Channel full or disconnected; drop event.
-				break;
+				// Channel full or disconnected; drop event but keep draining
+				// the ring buffer to avoid kernel-side backpressure.
+				events_dropped.fetch_add(1, Ordering::Relaxed);
+				continue;
 			}
 		}
 
@@ -357,6 +380,7 @@ fn poll_net_ring_buffer(
 	tx: SyncSender<ProbeEvent>,
 	shutdown: Arc<AtomicBool>,
 	events_captured: Arc<AtomicU64>,
+	events_dropped: Arc<AtomicU64>,
 ) {
 	while !shutdown.load(Ordering::Relaxed) {
 		while let Some(item) = ring_buf.next() {
@@ -370,8 +394,8 @@ fn poll_net_ring_buffer(
 			};
 
 			let comm = comm_to_string(&event.comm);
-			let src = Ipv4Addr::from(u32::from_be(event.src_addr));
-			let dst = Ipv4Addr::from(u32::from_be(event.dst_addr));
+			let src = format_addr(event.address_family, &event.src_addr);
+			let dst = format_addr(event.address_family, &event.dst_addr);
 			let old_state = tcp_state_name(event.old_state);
 			let new_state = tcp_state_name(event.new_state);
 
@@ -395,7 +419,10 @@ fn poll_net_ring_buffer(
 			events_captured.fetch_add(1, Ordering::Relaxed);
 
 			if tx.try_send(probe_event).is_err() {
-				break;
+				// Channel full or disconnected; drop event but keep draining
+				// the ring buffer to avoid kernel-side backpressure.
+				events_dropped.fetch_add(1, Ordering::Relaxed);
+				continue;
 			}
 		}
 
@@ -404,6 +431,45 @@ fn poll_net_ring_buffer(
 }
 
 // -- Helpers --
+
+/// Format an address based on its address family.
+///
+/// - AF_INET: reads the first 4 bytes as an IPv4 address
+/// - AF_INET6: reads all 16 bytes as an IPv6 address
+/// - Unknown: returns a hex dump
+fn format_addr(family: u8, addr: &[u8; 16]) -> String {
+	match family {
+		AF_INET => {
+			let bytes: [u8; 4] = [addr[0], addr[1], addr[2], addr[3]];
+			Ipv4Addr::from(bytes).to_string()
+		}
+		AF_INET6 => {
+			Ipv6Addr::from(*addr).to_string()
+		}
+		_ => {
+			format!("?{:02x?}", addr)
+		}
+	}
+}
+
+/// Read the kernel-side drop counter for the given probe type from the
+/// DROP_COUNTERS array map. Returns 0 if the map is missing or unreadable.
+fn read_kernel_drop_counter(ebpf: &Ebpf, probe_type: ProbeType) -> u64 {
+	let index: u32 = match probe_type {
+		ProbeType::SyscallTrace => mycelium_ebpf_common::DROP_COUNTER_SYSCALL,
+		ProbeType::NetworkMonitor => mycelium_ebpf_common::DROP_COUNTER_NET,
+	};
+
+	let Some(map) = ebpf.map("DROP_COUNTERS") else {
+		return 0;
+	};
+
+	let Ok(array) = Array::<&MapData, u64>::try_from(map) else {
+		return 0;
+	};
+
+	array.get(&index, 0).unwrap_or(0)
+}
 
 /// Convert a kernel comm byte array to a String, trimming at the first null byte.
 fn comm_to_string(comm: &[u8; 16]) -> String {
@@ -769,10 +835,43 @@ mod tests {
 	}
 
 	#[test]
-	fn test_ipv4_formatting() {
-		// Network byte order for 192.168.1.1
-		let addr = u32::from(Ipv4Addr::new(192, 168, 1, 1)).to_be();
-		let ip = Ipv4Addr::from(u32::from_be(addr));
-		assert_eq!(ip.to_string(), "192.168.1.1");
+	fn test_format_addr_ipv4() {
+		let mut addr = [0u8; 16];
+		addr[0] = 192;
+		addr[1] = 168;
+		addr[2] = 1;
+		addr[3] = 1;
+		assert_eq!(format_addr(AF_INET, &addr), "192.168.1.1");
+	}
+
+	#[test]
+	fn test_format_addr_ipv4_loopback() {
+		let mut addr = [0u8; 16];
+		addr[0] = 127;
+		addr[3] = 1;
+		assert_eq!(format_addr(AF_INET, &addr), "127.0.0.1");
+	}
+
+	#[test]
+	fn test_format_addr_ipv6_loopback() {
+		let mut addr = [0u8; 16];
+		addr[15] = 1;
+		assert_eq!(format_addr(AF_INET6, &addr), "::1");
+	}
+
+	#[test]
+	fn test_format_addr_ipv6_full() {
+		let addr: [u8; 16] = [
+			0x20, 0x01, 0x0d, 0xb8, 0x00, 0x00, 0x00, 0x00,
+			0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01,
+		];
+		assert_eq!(format_addr(AF_INET6, &addr), "2001:db8::1");
+	}
+
+	#[test]
+	fn test_format_addr_unknown_family() {
+		let addr = [0xffu8; 16];
+		let result = format_addr(99, &addr);
+		assert!(result.starts_with('?'));
 	}
 }

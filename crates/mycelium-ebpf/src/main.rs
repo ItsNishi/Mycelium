@@ -9,10 +9,13 @@
 use aya_ebpf::{
 	helpers::{bpf_get_current_comm, bpf_get_current_pid_tgid, bpf_ktime_get_ns},
 	macros::{map, raw_tracepoint, tracepoint},
-	maps::{HashMap, RingBuf},
+	maps::{Array, HashMap, RingBuf},
 	programs::{RawTracePointContext, TracePointContext},
 };
-use mycelium_ebpf_common::{NetEvent, SyscallEvent, TASK_COMM_LEN};
+use mycelium_ebpf_common::{
+	AF_INET, AF_INET6, DROP_COUNTER_NET, DROP_COUNTER_SYSCALL,
+	NetEvent, SyscallEvent, TASK_COMM_LEN,
+};
 
 // -- Shared maps --
 
@@ -31,6 +34,11 @@ static PID_FILTER: HashMap<u32, u8> = HashMap::with_max_entries(1024, 0);
 /// Syscall number filter: if non-empty, only trace listed syscall numbers.
 #[map]
 static SYSCALL_FILTER: HashMap<u64, u8> = HashMap::with_max_entries(512, 0);
+
+/// Kernel-side drop counters: index 0 = syscall drops, index 1 = net drops.
+/// Incremented when a ring buffer reserve() fails (buffer full).
+#[map]
+static DROP_COUNTERS: Array<u64> = Array::with_max_entries(2, 0);
 
 // -- Syscall tracing --
 
@@ -88,6 +96,8 @@ unsafe fn try_syscall_trace(ctx: RawTracePointContext) -> Result<i32, i32> {
 			entry.as_mut_ptr().write(event);
 		}
 		entry.submit(0);
+	} else {
+		increment_drop_counter(DROP_COUNTER_SYSCALL);
 	}
 
 	Ok(0)
@@ -97,16 +107,7 @@ unsafe fn try_syscall_trace(ctx: RawTracePointContext) -> Result<i32, i32> {
 
 /// Attaches to tracepoint/sock/inet_sock_set_state.
 ///
-/// Tracepoint format offsets (from /sys/kernel/debug/tracing/events/sock/inet_sock_set_state/format):
-///   offset  8: const void* skaddr   (8 bytes)
-///   offset 16: int oldstate         (4 bytes)
-///   offset 20: int newstate         (4 bytes)
-///   offset 24: __u16 sport          (2 bytes)
-///   offset 26: __u16 dport          (2 bytes)
-///   offset 28: __u16 family         (2 bytes)
-///   offset 30: __u16 protocol       (2 bytes)
-///   offset 32: __u8 saddr[4]        (4 bytes, IPv4)
-///   offset 36: __u8 daddr[4]        (4 bytes, IPv4)
+/// See `mycelium_ebpf_common::NetEvent` for full tracepoint format documentation.
 #[tracepoint(category = "sock", name = "inet_sock_set_state")]
 pub fn net_monitor(ctx: TracePointContext) -> i32 {
 	match unsafe { try_net_monitor(ctx) } {
@@ -136,28 +137,44 @@ unsafe fn try_net_monitor(ctx: TracePointContext) -> Result<i32, i32> {
 	let family: u16 = unsafe { ctx.read_at(28) }.map_err(|_| 1i32)?;
 	let protocol: u16 = unsafe { ctx.read_at(30) }.map_err(|_| 1i32)?;
 
-	// Only handle AF_INET (IPv4) for now.
-	const AF_INET: u16 = 2;
-	if family != AF_INET {
-		return Ok(0);
-	}
+	let mut src_addr = [0u8; 16];
+	let mut dst_addr = [0u8; 16];
+	let address_family: u8;
 
-	let src_addr: u32 = unsafe { ctx.read_at(32) }.map_err(|_| 1i32)?;
-	let dst_addr: u32 = unsafe { ctx.read_at(36) }.map_err(|_| 1i32)?;
+	match family {
+		x if x == AF_INET as u16 => {
+			// IPv4: read 4 bytes at offsets 32/36, zero-extend into [u8; 16].
+			let saddr: [u8; 4] = unsafe { ctx.read_at(32) }.map_err(|_| 1i32)?;
+			let daddr: [u8; 4] = unsafe { ctx.read_at(36) }.map_err(|_| 1i32)?;
+			src_addr[..4].copy_from_slice(&saddr);
+			dst_addr[..4].copy_from_slice(&daddr);
+			address_family = AF_INET;
+		}
+		x if x == AF_INET6 as u16 => {
+			// IPv6: read 16 bytes at offsets 40/56.
+			src_addr = unsafe { ctx.read_at(40) }.map_err(|_| 1i32)?;
+			dst_addr = unsafe { ctx.read_at(56) }.map_err(|_| 1i32)?;
+			address_family = AF_INET6;
+		}
+		_ => {
+			// Unknown address family, skip.
+			return Ok(0);
+		}
+	}
 
 	let timestamp_ns = bpf_ktime_get_ns();
 
 	let event = NetEvent {
 		pid,
-		comm,
-		src_addr,
-		dst_addr,
-		src_port: sport,
-		dst_port: dport,
+		address_family,
 		protocol: protocol as u8,
 		old_state: oldstate as u8,
 		new_state: newstate as u8,
-		_pad: 0,
+		src_port: sport,
+		dst_port: dport,
+		comm,
+		src_addr,
+		dst_addr,
 		timestamp_ns,
 	};
 
@@ -166,9 +183,22 @@ unsafe fn try_net_monitor(ctx: TracePointContext) -> Result<i32, i32> {
 			entry.as_mut_ptr().write(event);
 		}
 		entry.submit(0);
+	} else {
+		increment_drop_counter(DROP_COUNTER_NET);
 	}
 
 	Ok(0)
+}
+
+// -- Helpers --
+
+/// Increment a drop counter by index (0=syscall, 1=net).
+fn increment_drop_counter(index: u32) {
+	if let Some(counter) = unsafe { DROP_COUNTERS.get_ptr_mut(index) } {
+		unsafe {
+			*counter += 1;
+		}
+	}
 }
 
 #[panic_handler]

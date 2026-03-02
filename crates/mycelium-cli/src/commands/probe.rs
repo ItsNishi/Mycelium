@@ -150,7 +150,10 @@ fn print_probe_event(event: &ProbeEvent, format: OutputFormat) {
 
 impl TableDisplay for ProbeInfo {
 	fn print_header() {
-		println!("{:<10} {:<20} {:<15} EVENTS", "HANDLE", "TYPE", "TARGET");
+		println!(
+			"{:<10} {:<20} {:<15} {:<12} DROPPED",
+			"HANDLE", "TYPE", "TARGET", "EVENTS",
+		);
 	}
 
 	fn print_row(&self) {
@@ -160,8 +163,8 @@ impl TableDisplay for ProbeInfo {
 		};
 		let target = self.target.as_deref().unwrap_or("-");
 		println!(
-			"{:<10} {:<20} {:<15} {}",
-			self.handle.0, type_str, target, self.events_captured,
+			"{:<10} {:<20} {:<15} {:<12} {}",
+			self.handle.0, type_str, target, self.events_captured, self.events_dropped,
 		);
 	}
 }
