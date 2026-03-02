@@ -5,6 +5,8 @@ mod memory;
 mod network;
 mod persistence;
 mod platform;
+#[cfg(feature = "ebpf")]
+pub mod probe;
 mod process;
 mod security;
 mod service;

@@ -3,6 +3,7 @@
 pub mod log;
 pub mod memory;
 pub mod network;
+pub mod probe;
 pub mod process;
 pub mod response;
 pub mod security;
@@ -338,5 +339,36 @@ impl MyceliumMcpService {
 		Parameters(req): Parameters<security::DetectHooksRequest>,
 	) -> Result<CallToolResult, McpError> {
 		security::handle_detect_hooks(self, req).await
+	}
+
+	// -- Probes --
+
+	#[tool(description = "Attach an eBPF probe (syscall-trace or network-monitor). Requires CAP_BPF/root.")]
+	async fn probe_attach(
+		&self,
+		Parameters(req): Parameters<probe::AttachRequest>,
+	) -> Result<CallToolResult, McpError> {
+		probe::handle_attach(self, req).await
+	}
+
+	#[tool(description = "Detach a running eBPF probe by handle")]
+	async fn probe_detach(
+		&self,
+		Parameters(req): Parameters<probe::HandleRequest>,
+	) -> Result<CallToolResult, McpError> {
+		probe::handle_detach(self, req).await
+	}
+
+	#[tool(description = "List all active eBPF probes")]
+	async fn probe_list(&self) -> Result<CallToolResult, McpError> {
+		probe::handle_list(self).await
+	}
+
+	#[tool(description = "Read events from an active eBPF probe")]
+	async fn probe_read(
+		&self,
+		Parameters(req): Parameters<probe::HandleRequest>,
+	) -> Result<CallToolResult, McpError> {
+		probe::handle_read(self, req).await
 	}
 }

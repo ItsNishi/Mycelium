@@ -63,6 +63,10 @@ enum Command {
 	/// Policy management
 	#[command(subcommand)]
 	Policy(commands::policy::PolicyCmd),
+
+	/// eBPF probe management (requires root/CAP_BPF)
+	#[command(subcommand)]
+	Probe(commands::probe::ProbeCmd),
 }
 
 fn main() {
@@ -99,5 +103,18 @@ fn main() {
 		Command::Log(cmd) => cmd.run(&platform, format),
 		Command::Security(cmd) => cmd.run(&platform, format),
 		Command::Policy(cmd) => cmd.run(format),
+		Command::Probe(cmd) => {
+			#[cfg(all(target_os = "linux", feature = "ebpf"))]
+			{
+				use mycelium_core::platform::ProbePlatform;
+				cmd.run(&platform as &dyn ProbePlatform, format, dry_run);
+			}
+			#[cfg(not(all(target_os = "linux", feature = "ebpf")))]
+			{
+				let _ = (cmd, format, dry_run);
+				eprintln!("error: probes not available (ebpf feature not enabled)");
+				std::process::exit(1);
+			}
+		}
 	}
 }

@@ -13,7 +13,7 @@ use rmcp::model::*;
 use rmcp::{ServerHandler, tool_handler};
 
 use mycelium_core::audit::{AuditEntry, AuditLog, AuditOutcome};
-use mycelium_core::platform::Platform;
+use mycelium_core::platform::{Platform, ProbePlatform};
 use mycelium_core::policy::Policy;
 
 use rate_limit::RateLimiter;
@@ -23,6 +23,7 @@ use tools::response::err_text;
 #[derive(Clone)]
 pub struct MyceliumMcpService {
 	platform: Arc<dyn Platform>,
+	probe_platform: Option<Arc<dyn ProbePlatform>>,
 	policy: Arc<Policy>,
 	audit: Arc<dyn AuditLog>,
 	agent_name: String,
@@ -40,6 +41,7 @@ impl MyceliumMcpService {
 		let rate_limiter = Arc::new(RateLimiter::new(policy.rate_limits.clone()));
 		Self {
 			platform,
+			probe_platform: None,
 			policy,
 			audit,
 			agent_name,
@@ -48,9 +50,20 @@ impl MyceliumMcpService {
 		}
 	}
 
+	/// Set the probe platform for eBPF support.
+	pub fn with_probe_platform(mut self, probe: Arc<dyn ProbePlatform>) -> Self {
+		self.probe_platform = Some(probe);
+		self
+	}
+
 	/// Get a clone of the platform Arc for use in spawn_blocking.
 	pub fn platform(&self) -> Arc<dyn Platform> {
 		Arc::clone(&self.platform)
+	}
+
+	/// Get a clone of the probe platform Arc, if available.
+	pub fn probe_platform(&self) -> Option<Arc<dyn ProbePlatform>> {
+		self.probe_platform.as_ref().map(Arc::clone)
 	}
 
 	/// Check policy for a tool call. Returns Some(result) if denied or dry-run,

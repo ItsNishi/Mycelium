@@ -6,6 +6,15 @@ license.workspace = true
 authors.workspace = true
 description = "Linux backend for Mycelium"
 
+[features]
+default = []
+ebpf = ["dep:aya", "dep:mycelium-ebpf-common", "dep:aya-build"]
+
 [dependencies]
 mycelium-core = { path = "../mycelium-core" }
 nix = { version = "0.29", features = ["fs", "hostname", "net", "signal", "user"] }
+aya = { version = "0.13", optional = true }
+mycelium-ebpf-common = { path = "../mycelium-ebpf-common", features = ["user"], optional = true }
+
+[build-dependencies]
+aya-build = { version = "0.1.3", optional = true }

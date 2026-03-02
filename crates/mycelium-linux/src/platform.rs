@@ -7,12 +7,21 @@ use mycelium_core::platform::{
 };
 use mycelium_core::types::*;
 
+#[cfg(feature = "ebpf")]
+use std::sync::Arc;
+
 /// Linux backend using /proc, /sys, nix, and systemd D-Bus.
-pub struct LinuxPlatform;
+pub struct LinuxPlatform {
+	#[cfg(feature = "ebpf")]
+	probe_state: Arc<crate::probe::ProbeState>,
+}
 
 impl LinuxPlatform {
 	pub fn new() -> Self {
-		Self
+		Self {
+			#[cfg(feature = "ebpf")]
+			probe_state: Arc::new(crate::probe::ProbeState::new()),
+		}
 	}
 }
 
@@ -216,5 +225,24 @@ impl SecurityPlatform for LinuxPlatform {
 
 	fn detect_hooks(&self, pid: u32) -> Result<Vec<HookInfo>> {
 		crate::hooks::detect_hooks(pid)
+	}
+}
+
+#[cfg(feature = "ebpf")]
+impl mycelium_core::platform::ProbePlatform for LinuxPlatform {
+	fn attach_probe(&self, config: &ProbeConfig) -> Result<ProbeHandle> {
+		crate::probe::attach_probe(config, &self.probe_state)
+	}
+
+	fn detach_probe(&self, handle: ProbeHandle) -> Result<()> {
+		crate::probe::detach_probe(handle, &self.probe_state)
+	}
+
+	fn list_probes(&self) -> Result<Vec<ProbeInfo>> {
+		crate::probe::list_probes(&self.probe_state)
+	}
+
+	fn read_probe_events(&self, handle: &ProbeHandle) -> Result<Vec<ProbeEvent>> {
+		crate::probe::read_probe_events(handle, &self.probe_state)
 	}
 }

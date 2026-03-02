@@ -10,6 +10,10 @@ description = "MCP server for Mycelium"
 name = "mycelium-mcp"
 path = "src/main.rs"
 
+[features]
+default = []
+ebpf = ["mycelium-linux/ebpf"]
+
 [dependencies]
 mycelium-core = { path = "../mycelium-core", features = ["serde", "toml"] }
 rmcp = { version = "0.17", features = ["server", "transport-io"] }

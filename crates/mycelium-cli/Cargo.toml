@@ -10,6 +10,10 @@ description = "CLI interface for Mycelium"
 name = "mycelium"
 path = "src/main.rs"
 
+[features]
+default = []
+ebpf = ["mycelium-linux/ebpf"]
+
 [dependencies]
 mycelium-core = { path = "../mycelium-core", features = ["serde", "toml"] }
 clap = { version = "4", features = ["derive"] }

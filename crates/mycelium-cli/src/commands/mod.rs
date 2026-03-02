@@ -2,6 +2,7 @@ pub mod log;
 pub mod memory;
 pub mod network;
 pub mod policy;
+pub mod probe;
 pub mod process;
 pub mod security;
 pub mod service;
