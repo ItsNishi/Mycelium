@@ -5,18 +5,15 @@ The `mycelium-linux` crate implements the `Platform` trait for Linux. It reads s
 ## LinuxPlatform
 
 ```rust
-pub struct LinuxPlatform;
-
-impl LinuxPlatform {
-    pub fn new() -> Self { Self }
-}
-
-impl Default for LinuxPlatform {
-    fn default() -> Self { Self::new() }
+pub struct LinuxPlatform {
+    #[cfg(feature = "ebpf")]
+    probe_state: Arc<probe::ProbeState>,
 }
 ```
 
-`LinuxPlatform` is a zero-sized, stateless struct. Every call reads fresh data from the kernel -- no caching, no stale state. This makes it `Send + Sync` without any locking.
+Without the `ebpf` feature, `LinuxPlatform` has no fields and is zero-sized. All Platform methods read fresh data from the kernel -- no caching, no stale state.
+
+With the `ebpf` feature enabled, the struct gains a `probe_state` field holding eBPF probe lifecycle state (attached programs, event channels, poll threads). This state is thread-safe via internal `Mutex` and `AtomicU64`. The `ProbePlatform` trait is also implemented.
 
 ## Dependencies
 
@@ -24,6 +21,9 @@ impl Default for LinuxPlatform {
 |-------|---------|----------|---------|
 | `mycelium-core` | workspace | default | Types and trait definition |
 | `nix` | 0.29 | `fs`, `hostname`, `net`, `signal`, `user` | POSIX syscalls (uname, getifaddrs, statvfs, kill, getuid) |
+| `aya` | 0.13 | optional (`ebpf` feature) | eBPF program loading, map access, ring buffer polling |
+| `mycelium-ebpf-common` | workspace | optional (`ebpf` feature, `user`) | Shared event structs and TCP state helpers |
+| `aya-build` | 0.1.3 | build-dep, optional (`ebpf` feature) | Compiles eBPF programs at build time |
 
 ## Data Source Reference
 
@@ -234,6 +234,25 @@ Format: `TIMESTAMP HOSTNAME IDENT[PID]: MESSAGE`. The PID is extracted from squa
 | Memory search | No | Yes | Requires ptrace or root for `/proc/[pid]/mem` access |
 | Persistence scan | Partial | Full | User crontabs and some system dirs may be restricted |
 | Hook detection | Partial | Full | `/proc/[pid]/environ` and `/proc/[pid]/maps` may need root |
+| eBPF probe attach/detach | No | Yes | Requires root or CAP_BPF. Only available with `ebpf` feature. |
+| eBPF probe list/read | No | Yes | Probes must be attached first (requires root) |
+
+### Probes (eBPF, feature-gated)
+
+| Method | Source | Details |
+|--------|--------|---------|
+| `attach_probe` | aya + eBPF bytecode | Loads compiled eBPF programs, attaches to tracepoints, populates filter maps, spawns ring buffer poll thread |
+| `detach_probe` | aya (drop) | Signals shutdown to poll thread, joins it, drops Ebpf instance to detach programs |
+| `list_probes` | internal state | Reads active probe metadata and event counts from ProbeState |
+| `read_probe_events` | mpsc channel | Drains bounded channel (10K capacity) of events collected by poll thread |
+
+**Probe types:**
+- `SyscallTrace`: attaches to `raw_tracepoint/sys_enter`. Captures pid, tid, syscall number, process name. Optional PID and syscall number filters via eBPF HashMap maps.
+- `NetworkMonitor`: attaches to `tracepoint/sock/inet_sock_set_state`. Captures TCP state transitions with source/dest IP:port, protocol, and process info.
+
+**Event flow:** eBPF program writes `#[repr(C)]` event to ring buffer -> background thread polls ring buffer (100ms timeout) -> converts to `ProbeEvent` -> sends on `mpsc::SyncSender` (10K capacity) -> `read_probe_events()` drains receiver.
+
+**Syscall name resolution:** Const lookup table of ~350 x86_64 syscall numbers mapped to names.
 
 ## Edge Cases and Known Limitations
 
@@ -243,3 +262,6 @@ Format: `TIMESTAMP HOSTNAME IDENT[PID]: MESSAGE`. The PID is extracted from squa
 - **Firewall detection:** If neither `nft` nor `iptables` is installed, `list_firewall_rules` returns an empty list and `security_status().firewall_active` is `false`.
 - **Systemd dependency:** Service methods assume systemd. Non-systemd init systems are not supported.
 - **Journal access:** Users not in the `systemd-journal` group may see limited or no log entries.
+- **eBPF kernel version:** Probes require kernel 5.8+ for ring buffer support. Older kernels will fail at attach time.
+- **eBPF event channel:** The mpsc channel has a 10K event capacity. Under extreme load, the poll thread may drop events if the channel is full.
+- **eBPF compilation:** Building with the `ebpf` feature requires `bpf-linker` and nightly Rust. The eBPF programs are compiled to `bpfel-unknown-none` at build time via `aya-build`.

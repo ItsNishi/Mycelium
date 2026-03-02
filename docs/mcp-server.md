@@ -1,6 +1,6 @@
 # MCP Server
 
-The `mycelium-mcp` binary exposes all 45 Platform methods as MCP tools over a JSON-RPC stdio transport. AI agents connect, discover tools via `tools/list`, and call them with typed JSON parameters. Every call is evaluated against the policy engine and logged to the audit trail.
+The `mycelium-mcp` binary exposes all 49 tools (45 Platform methods + 4 probe tools) as MCP tools over a JSON-RPC stdio transport. AI agents connect, discover tools via `tools/list`, and call them with typed JSON parameters. Every call is evaluated against the policy engine and logged to the audit trail.
 
 ## Building
 
@@ -74,7 +74,7 @@ The server responds to `initialize`, `notifications/initialized`, `tools/list`, 
 
 ## Tool List
 
-All 45 tools organized by category. Tools without parameters take an empty `arguments: {}` object. Tools with parameters require a JSON object matching the listed schema.
+All 49 tools organized by category. Tools without parameters take an empty `arguments: {}` object. Tools with parameters require a JSON object matching the listed schema.
 
 ### Process (11 tools)
 
@@ -168,6 +168,23 @@ All 45 tools organized by category. Tools without parameters take an empty `argu
 | `security_persistence` | None | Scan persistence mechanisms (Linux: cron, systemd timers, init scripts, XDG autostart, shell profiles, udev; Windows: registry, services, tasks, startup, WMI, COM) |
 | `security_detect_hooks` | `{ pid: u32 }` | Detect hooks in a process (Linux: LD_PRELOAD, suspicious libraries, ptrace; Windows: inline, IAT, EAT) |
 
+### Probes (4 tools)
+
+| Tool | Parameters | Description |
+|------|-----------|-------------|
+| `probe_attach` | `{ probe_type: String, target?: String, filter?: String }` | Attach an eBPF probe (syscall-trace or network-monitor) |
+| `probe_detach` | `{ handle: u64 }` | Detach a running eBPF probe |
+| `probe_list` | None | List active eBPF probes |
+| `probe_read` | `{ handle: u64 }` | Read events from an attached probe |
+
+Probe tools require the `ebpf` feature to be enabled at compile time. Without it, they return "probes not available". `probe_attach` and `probe_detach` require the `ProbeManage` capability. `probe_list` and `probe_read` are read-only.
+
+**probe_type values:** `syscall-trace` (raw tracepoint on sys_enter) or `network-monitor` (tracepoint on inet_sock_set_state).
+
+**target:** PID for syscall-trace, interface name for network-monitor. Optional (omit to trace all).
+
+**filter:** Comma-separated syscall names/numbers for syscall-trace (e.g., `"execve,openat,read"`), or protocol:port for network-monitor (e.g., `"tcp:80,443"`).
+
 ## Response Format
 
 All successful responses return `CallToolResult` with a single text content block containing pretty-printed JSON:
@@ -240,7 +257,7 @@ Fields:
 │  main.rs          lib.rs            tools/mod.rs     │
 │  ┌──────────┐    ┌──────────────┐  ┌──────────────┐ │
 │  │ CLI args │───▶│ MCP Service  │──│ Tool Router  │ │
-│  │ stdio()  │    │ check_policy │  │ 45 #[tool]   │ │
+│  │ stdio()  │    │ check_policy │  │ 49 #[tool]   │ │
 │  └──────────┘    │ log_success  │  │ methods      │ │
 │                  │ log_failure  │  └──────┬───────┘ │
 │                  └──────┬───────┘         │         │

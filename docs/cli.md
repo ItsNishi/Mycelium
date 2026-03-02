@@ -494,6 +494,104 @@ mycelium policy validate examples/policy.toml
 
 ---
 
+### Probe (eBPF)
+
+Probe commands require the `ebpf` feature to be enabled at compile time (`cargo build -p mycelium-cli --features ebpf`) and root/CAP_BPF at runtime.
+
+#### `mycelium probe attach --type <TYPE> [--target <TARGET>] [--filter <FILTER>]`
+
+Attach an eBPF probe. Returns a handle ID for use with other probe commands.
+
+| Flag | Description |
+|------|-------------|
+| `--type` | Probe type: `syscall-trace` or `network-monitor` |
+| `--target` | PID for syscall-trace, interface name for network-monitor (optional) |
+| `--filter` | Comma-separated syscall names/numbers, or protocol:port list (optional) |
+
+```bash
+# Trace all syscalls system-wide
+sudo mycelium probe attach --type syscall-trace
+
+# Trace specific PID
+sudo mycelium probe attach --type syscall-trace --target 1234
+
+# Trace specific syscalls for a PID
+sudo mycelium probe attach --type syscall-trace --target 1234 --filter execve,openat,read
+
+# Monitor TCP state changes
+sudo mycelium probe attach --type network-monitor
+```
+
+```
+probe attached: handle=1
+```
+
+#### `mycelium probe detach <HANDLE>`
+
+Detach a running probe by handle ID.
+
+```bash
+sudo mycelium probe detach 1
+```
+
+```
+probe 1 detached
+```
+
+#### `mycelium probe list`
+
+List active probes.
+
+```bash
+sudo mycelium probe list
+```
+
+```
+HANDLE     TYPE                 TARGET          EVENTS
+1          syscall-trace        1234            4523
+2          network-monitor      -               187
+```
+
+#### `mycelium probe events <HANDLE> [--follow] [--limit N]`
+
+Read events from an attached probe.
+
+| Flag | Description |
+|------|-------------|
+| `--follow` | Continuously poll for events (like `tail -f`), 200ms interval |
+| `--limit <N>` | Maximum number of events to read |
+
+```bash
+# Read buffered events
+sudo mycelium probe events 1
+
+# Stream events continuously
+sudo mycelium probe events 1 --follow
+
+# Read at most 10 events
+sudo mycelium probe events 1 --limit 10
+```
+
+Table output:
+```
+[1709312400000000000] pid=1234 (nginx) syscall: read (0)
+[1709312400000100000] pid=1234 (nginx) syscall: write (1)
+[1709312400000200000] pid=5678 (curl) tcp_state: 192.168.1.100:443 ESTABLISHED->CLOSE_WAIT
+```
+
+JSON output (`--json`):
+```json
+{
+  "timestamp": 1709312400000000000,
+  "pid": 1234,
+  "process_name": "nginx",
+  "event_type": "syscall",
+  "details": "read (0)"
+}
+```
+
+---
+
 ## Output Formatting
 
 ### Table Format (default)

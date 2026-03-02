@@ -133,7 +133,7 @@ pub trait ProbePlatform: Platform {
 | `list_probes` | `(&self) -> Result<Vec<ProbeInfo>>` | Read |
 | `read_probe_events` | `(&self, handle: &ProbeHandle) -> Result<Vec<ProbeEvent>>` | Read |
 
-**Status:** Not yet implemented. Planned for Phase 5.
+**Status:** Implemented in Phase 6 (Linux only, behind `ebpf` feature flag). Requires `bpf-linker`, nightly Rust for eBPF compilation, and root/CAP_BPF at runtime. Uses the aya framework for pure-Rust eBPF loading.
 
 ## Error Handling
 

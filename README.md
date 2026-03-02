@@ -11,7 +11,7 @@ Like fungal mycelium threading through soil to surface nutrients, Mycelium threa
 
 ## ✨ Features
 
-- 🔍 **45 tools** across 9 categories (process, memory, network, storage, system, tuning, services, logs, security)
+- 🔍 **49 tools** across 10 categories (process, memory, network, storage, system, tuning, services, logs, security, probes)
 - 🛡️ **Policy engine** with role presets, capability groups, resource filters, and specificity-based evaluation
 - 📊 **Dual output** -- human-readable tables or structured JSON
 - 🧩 **Modular workspace** -- zero-dependency core, pluggable OS backends
@@ -45,9 +45,11 @@ Like fungal mycelium threading through soil to surface nutrients, Mycelium threa
 | Crate | Description |
 |-------|-------------|
 | `mycelium-core` | Types, `Platform` trait, errors, policy engine. Zero dependencies by default. |
-| `mycelium-linux` | Linux backend -- `/proc`, `/sys`, `systemctl`, `journalctl` |
+| `mycelium-ebpf-common` | Shared `#[repr(C)]` event types for eBPF programs (`#![no_std]`) |
+| `mycelium-ebpf` | eBPF programs for syscall tracing and network monitoring (not a workspace member) |
+| `mycelium-linux` | Linux backend -- `/proc`, `/sys`, `systemctl`, `journalctl`, eBPF (optional) |
 | `mycelium-cli` | CLI binary with table/JSON output for every operation |
-| `mycelium-mcp` | MCP server exposing all 45 tools to AI agents via JSON-RPC over stdio |
+| `mycelium-mcp` | MCP server exposing all 49 tools to AI agents via JSON-RPC over stdio |
 | `mycelium-windows` | Windows backend (sysinfo, WinAPI, WMI, NetAPI32) |
 
 ## 🚀 Quick Start
@@ -74,7 +76,7 @@ mycelium-mcp
 mycelium-mcp --config policy.toml --agent deploy-bot
 ```
 
-The server speaks JSON-RPC over stdin/stdout (MCP protocol 2024-11-05). All 45 tools are registered and discoverable via `tools/list`. Policy enforcement and audit logging apply to every tool call.
+The server speaks JSON-RPC over stdin/stdout (MCP protocol 2024-11-05). All 49 tools are registered and discoverable via `tools/list`. Policy enforcement and audit logging apply to every tool call.
 
 **Claude Desktop / MCP client config:**
 
@@ -225,6 +227,7 @@ mycelium policy validate policy.toml
 | **Log** | `-u UNIT`, `-l LEVEL`, `-n LIMIT`, `--grep PATTERN`, `--since TS`, `--until TS` |
 | **Security** | `users`, `groups`, `modules`, `status`, `persistence`, `detect-hooks <PID>` |
 | **Policy** | `show [--profile NAME]`, `list`, `validate <PATH>` |
+| **Probe** | `attach --type <TYPE>`, `detach <HANDLE>`, `list`, `events <HANDLE> [--follow] [--limit N]` |
 
 **Global flags:** `--json` · `--dry-run` · `--config <PATH>`
 
@@ -238,7 +241,7 @@ mycelium policy validate policy.toml
 | **4** | ✅ Complete | Windows backend (sysinfo, WinAPI, WMI, NetAPI32, SCM, token APIs) |
 | **4.5** | ✅ Complete | Security research (handles, PE parsing, token inspection, persistence, hook detection, memory search) |
 | **5** | ✅ Complete | Linux backend feature parity (threads, modules, capabilities, FD handles, token inspection, memory search, persistence scanning, hook detection) |
-| **6** | 📋 Planned | eBPF probes (syscall tracing, network monitoring) |
+| **6** | ✅ Complete | eBPF probes (syscall tracing, network monitoring via aya, feature-gated) |
 
 ## 🛠️ Development
 
@@ -257,6 +260,13 @@ cargo fmt --all -- --check
 ```
 
 **Requirements:** Rust 2024 edition (rustc 1.85+), Linux or Windows
+
+**eBPF probes (optional):** Requires `bpf-linker`, nightly Rust, kernel 5.8+, root/CAP_BPF at runtime:
+
+```bash
+cargo install bpf-linker
+cargo build --workspace --features mycelium-linux/ebpf
+```
 
 ## 📚 Documentation
 

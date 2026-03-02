@@ -5,6 +5,7 @@
 - **Rust:** Edition 2024 (requires rustc 1.85+)
 - **OS:** Linux (for running the Linux backend and integration tests)
 - **Optional:** `systemctl`, `journalctl` (for service and log tests)
+- **Optional (eBPF):** `bpf-linker`, nightly Rust, kernel 5.8+, root/CAP_BPF at runtime
 
 ## Building
 
@@ -17,6 +18,9 @@ cargo build --release --workspace
 
 # Build just the CLI
 cargo build -p mycelium-cli
+
+# Build with eBPF probe support (requires bpf-linker + nightly)
+cargo build --workspace --features mycelium-linux/ebpf
 ```
 
 Release profile settings (from workspace `Cargo.toml`):
@@ -276,11 +280,22 @@ Mycelium/
 │   │           ├── log.rs        LogEntry, LogLevel, LogQuery
 │   │           ├── probe.rs      ProbeHandle, ProbeConfig, ProbeEvent
 │   │           └── tuning.rs     TunableParam, TunableValue
+│   ├── mycelium-ebpf-common/
+│   │   ├── Cargo.toml
+│   │   └── src/
+│   │       └── lib.rs            SyscallEvent, NetEvent (#[repr(C)], #![no_std])
+│   ├── mycelium-ebpf/              (NOT workspace member, bpfel-unknown-none target)
+│   │   ├── Cargo.toml
+│   │   ├── rust-toolchain.toml   nightly
+│   │   └── src/
+│   │       └── main.rs           syscall_trace + net_monitor eBPF programs
 │   ├── mycelium-linux/
 │   │   ├── Cargo.toml
+│   │   ├── build.rs              eBPF compilation (feature-gated)
 │   │   └── src/
 │   │       ├── lib.rs            Module re-exports
 │   │       ├── platform.rs       LinuxPlatform struct + trait impl
+│   │       ├── probe.rs          eBPF probe loader, ring buffer polling (feature-gated)
 │   │       ├── process.rs        /proc/[pid]/ parsing
 │   │       ├── memory.rs         /proc/meminfo parsing
 │   │       ├── network.rs        /proc/net/, /sys/class/net/ parsing
@@ -305,7 +320,8 @@ Mycelium/
 │   │           ├── service.rs
 │   │           ├── log.rs
 │   │           ├── security.rs
-│   │           └── policy.rs
+│   │           ├── policy.rs
+│   │           └── probe.rs
 │   ├── mycelium-mcp/
 │   │   ├── Cargo.toml
 │   │   └── src/
@@ -313,7 +329,7 @@ Mycelium/
 │   │       ├── lib.rs            MyceliumMcpService struct, policy/audit helpers
 │   │       ├── audit.rs          StderrAuditLog (tracing-based)
 │   │       └── tools/
-│   │           ├── mod.rs        #[tool_router] with all 43 #[tool] methods
+│   │           ├── mod.rs        #[tool_router] with all 49 #[tool] methods
 │   │           ├── response.rs   ok_json(), ok_text(), err_text(), dry_run_text()
 │   │           ├── process.rs    PidRequest, KillRequest, handlers
 │   │           ├── memory.rs     handle_info, handle_process, handle_search, ...
@@ -324,6 +340,7 @@ Mycelium/
 │   │           ├── service.rs    NameRequest, ActionRequest, handlers
 │   │           ├── log.rs        LogReadRequest, handle_read
 │   │           ├── security.rs   handle_users/groups/modules/status/persistence/hooks
+│   │           ├── probe.rs     handle_attach/detach/list/read (feature-gated)
 │   │           └── error_mapping.rs  OS error code to agent-friendly messages
 │   └── mycelium-windows/         Windows backend (Phase 4/4.5 — complete)
 │       └── src/

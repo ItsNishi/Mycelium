@@ -10,9 +10,11 @@ The name reflects the design: like fungal mycelium threading through soil to sur
 Mycelium/
 ├── crates/
 │   ├── mycelium-core/       Core types, traits, errors, policy engine
-│   ├── mycelium-linux/      Linux backend (/proc, /sys, nix)
+│   ├── mycelium-ebpf-common/ Shared #[repr(C)] event types (#![no_std])
+│   ├── mycelium-ebpf/       eBPF programs (NOT workspace member, nightly)
+│   ├── mycelium-linux/      Linux backend (/proc, /sys, nix, eBPF optional)
 │   ├── mycelium-cli/        CLI binary (clap)
-│   ├── mycelium-mcp/        MCP server (45 tools, rmcp 0.17, stdio)
+│   ├── mycelium-mcp/        MCP server (49 tools, rmcp 0.17, stdio)
 │   └── mycelium-windows/    Windows backend (sysinfo, WinAPI, WMI)
 ├── examples/
 │   └── policy.toml          Example policy configuration
@@ -25,9 +27,11 @@ Mycelium/
 | Crate | Description | Dependencies |
 |-------|-------------|--------------|
 | `mycelium-core` | Types, `Platform` trait, `MyceliumError`, policy engine. Zero dependencies by default; optional `serde` and `toml` features. | None (or `serde`/`toml` opt-in) |
-| `mycelium-linux` | Implements `Platform` for Linux. Reads `/proc`, `/sys`, calls `systemctl`/`journalctl`. | `mycelium-core`, `nix 0.29` |
+| `mycelium-ebpf-common` | Shared `#[repr(C)]` event structs for eBPF programs (`#![no_std]`) | None |
+| `mycelium-ebpf` | eBPF programs for syscall tracing and network monitoring (not a workspace member) | `aya-ebpf`, `mycelium-ebpf-common` |
+| `mycelium-linux` | Implements `Platform` for Linux. Reads `/proc`, `/sys`, calls `systemctl`/`journalctl`. Optional eBPF probes via `ebpf` feature. | `mycelium-core`, `nix 0.29`, optional: `aya 0.13`, `mycelium-ebpf-common` |
 | `mycelium-cli` | Binary `mycelium` with subcommands for every Platform method. Table and JSON output. | `mycelium-core` (serde, toml), `mycelium-linux`, `clap 4`, `serde_json` |
-| `mycelium-mcp` | MCP server exposing all 45 tools via JSON-RPC stdio transport. | `mycelium-core` (serde, toml), `mycelium-linux`, `rmcp 0.17`, `tokio`, `clap 4`, `schemars` |
+| `mycelium-mcp` | MCP server exposing all 49 tools via JSON-RPC stdio transport. | `mycelium-core` (serde, toml), `mycelium-linux`, `rmcp 0.17`, `tokio`, `clap 4`, `schemars` |
 | `mycelium-windows` | Windows backend using sysinfo, WinAPI, WMI, NetAPI32, and winreg. Implements all 46 Platform methods. | `mycelium-core`, `sysinfo`, `windows 0.61`, `wmi`, `winreg` |
 
 ## Data Flow
@@ -87,7 +91,7 @@ OutputFormat::Json ◄──────────── Vec<ProcessInfo>
 | **4** | Complete | Windows backend (sysinfo, WinAPI, WMI, NetAPI32, SCM, token APIs) |
 | **4.5** | Complete | Security research features (handles, PE parsing, token inspection, persistence scanning, hook detection, memory pattern search) |
 | **5** | Complete | Linux backend feature parity (threads, modules, capabilities, FD handles, token inspection, memory search, persistence scanning, hook detection) |
-| **6** | Not started | eBPF probes (syscall tracing, network monitoring) |
+| **6** | Complete | eBPF probes (syscall tracing, network monitoring via aya, feature-gated) |
 
 ### Phase 1 Scope
 
@@ -115,7 +119,8 @@ OutputFormat::Json ◄──────────── Vec<ProcessInfo>
 | Synchronous Platform trait | `/proc` reads are kernel-backed memory operations (microseconds). The async MCP layer wraps calls with `spawn_blocking`. |
 | Specificity-based policy | More specific rules always win regardless of order. Filtered rules get a +4 bonus. This prevents accidental overrides. |
 | Separate ProbePlatform trait | eBPF probes are Linux-only. Keeping them in a separate trait means Windows backends don't need to stub 4 extra methods. |
+| Feature-gated eBPF | eBPF support requires nightly Rust, `bpf-linker`, and root at runtime. The `ebpf` feature flag keeps it opt-in so the default build stays simple. |
 | `cfg_attr` serde derives | Core types only derive `Serialize`/`Deserialize` behind the `serde` feature flag. The Linux backend doesn't pay for serde. |
-| Stateless backends | `LinuxPlatform` is a zero-sized struct with no fields. Every call reads fresh data from the kernel. No caching, no stale state. |
+| Stateless reads | Every Platform call reads fresh data from the kernel -- no caching, no stale state. With the `ebpf` feature, `LinuxPlatform` gains probe state (attached eBPF programs and event channels), but all read methods remain stateless. |
 | Custom error enum | Manual `Display` and `Error` impls instead of `thiserror` to maintain the zero-dependency guarantee in core. |
 | Edition 2024 | Uses the latest Rust edition for the newest language features. |
