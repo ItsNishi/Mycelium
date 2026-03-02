@@ -39,8 +39,28 @@ impl ProcessPlatform for LinuxPlatform {
 		crate::process::kill_process(pid, signal)
 	}
 
+	fn list_process_threads(&self, pid: u32) -> Result<Vec<ThreadInfo>> {
+		crate::process::list_process_threads(pid)
+	}
+
+	fn list_process_modules(&self, pid: u32) -> Result<Vec<ProcessModule>> {
+		crate::process::list_process_modules(pid)
+	}
+
 	fn process_environment(&self, pid: u32) -> Result<Vec<(String, String)>> {
 		crate::process::process_environment(pid)
+	}
+
+	fn list_process_privileges(&self, pid: u32) -> Result<Vec<PrivilegeInfo>> {
+		crate::process::list_process_privileges(pid)
+	}
+
+	fn list_process_handles(&self, pid: u32) -> Result<Vec<HandleInfo>> {
+		crate::process::list_process_handles(pid)
+	}
+
+	fn inspect_process_token(&self, pid: u32) -> Result<TokenInfo> {
+		crate::process::inspect_process_token(pid)
 	}
 }
 
@@ -63,6 +83,15 @@ impl MemoryPlatform for LinuxPlatform {
 
 	fn write_process_memory(&self, pid: u32, address: u64, data: &[u8]) -> Result<usize> {
 		crate::memory::write_process_memory(pid, address, data)
+	}
+
+	fn search_process_memory(
+		&self,
+		pid: u32,
+		pattern: &SearchPattern,
+		options: &MemorySearchOptions,
+	) -> Result<Vec<MemoryMatch>> {
+		crate::memory::search_process_memory(pid, pattern, options)
 	}
 }
 
@@ -179,5 +208,13 @@ impl SecurityPlatform for LinuxPlatform {
 
 	fn security_status(&self) -> Result<SecurityStatus> {
 		crate::security::security_status()
+	}
+
+	fn list_persistence_entries(&self) -> Result<Vec<PersistenceEntry>> {
+		crate::persistence::list_persistence_entries()
+	}
+
+	fn detect_hooks(&self, pid: u32) -> Result<Vec<HookInfo>> {
+		crate::hooks::detect_hooks(pid)
 	}
 }

@@ -56,6 +56,22 @@ impl MyceliumMcpService {
 		process::handle_kill(self, req).await
 	}
 
+	#[tool(description = "List threads belonging to a process by PID")]
+	async fn process_threads(
+		&self,
+		Parameters(req): Parameters<process::PidRequest>,
+	) -> Result<CallToolResult, McpError> {
+		process::handle_threads(self, req).await
+	}
+
+	#[tool(description = "List loaded modules (shared libraries / DLLs) for a process by PID")]
+	async fn process_modules(
+		&self,
+		Parameters(req): Parameters<process::PidRequest>,
+	) -> Result<CallToolResult, McpError> {
+		process::handle_modules(self, req).await
+	}
+
 	#[tool(description = "Get environment variables for a process by PID")]
 	async fn process_environment(
 		&self,
@@ -311,12 +327,12 @@ impl MyceliumMcpService {
 		security::handle_status(self).await
 	}
 
-	#[tool(description = "Scan Windows persistence mechanisms (registry, services, tasks, startup, WMI, COM)")]
+	#[tool(description = "Scan persistence mechanisms (Linux: cron, systemd timers, init scripts, XDG autostart, shell profiles, udev; Windows: registry, services, tasks, startup, WMI, COM)")]
 	async fn security_persistence(&self) -> Result<CallToolResult, McpError> {
 		security::handle_persistence(self).await
 	}
 
-	#[tool(description = "Detect API hooks (inline, IAT, EAT) in a process")]
+	#[tool(description = "Detect hooks in a process (Linux: LD_PRELOAD, suspicious libraries, ptrace; Windows: inline, IAT, EAT)")]
 	async fn security_detect_hooks(
 		&self,
 		Parameters(req): Parameters<security::DetectHooksRequest>,

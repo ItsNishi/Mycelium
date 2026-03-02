@@ -118,6 +118,12 @@ fn persistence_type_name(pt: &PersistenceType) -> &'static str {
 		PersistenceType::StartupFolder => "Startup",
 		PersistenceType::WmiSubscription => "WMI",
 		PersistenceType::ComHijack => "COMHijack",
+		PersistenceType::CronJob => "CronJob",
+		PersistenceType::SystemdTimer => "SystemdTimer",
+		PersistenceType::InitScript => "InitScript",
+		PersistenceType::XdgAutostart => "XdgAutostart",
+		PersistenceType::ShellProfile => "ShellProfile",
+		PersistenceType::UdevRule => "UdevRule",
 	}
 }
 
@@ -145,6 +151,9 @@ fn hook_type_name(ht: &HookType) -> &'static str {
 		HookType::InlineHook => "Inline",
 		HookType::IatHook => "IAT",
 		HookType::EatHook => "EAT",
+		HookType::LdPreload => "LD_PRELOAD",
+		HookType::GotPltHook => "GOT/PLT",
+		HookType::PtraceAttach => "Ptrace",
 	}
 }
 

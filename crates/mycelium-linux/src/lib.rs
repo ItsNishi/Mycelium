@@ -1,7 +1,9 @@
 //! Mycelium Linux backend -- implements Platform using /proc, /sys, and nix.
 
+mod hooks;
 mod memory;
 mod network;
+mod persistence;
 mod platform;
 mod process;
 mod security;

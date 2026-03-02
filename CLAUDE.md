@@ -18,7 +18,7 @@ Cargo workspace with shared zero-dep core + platform backends:
 
 - **mycelium-core**: Types, traits, errors, policy engine. Zero deps by default; optional `serde` and `toml` features.
 - **mycelium-linux**: Linux backend using /proc, /sys, nix.
-- **mycelium-mcp**: MCP server -- 43 tools via rmcp 0.17, stdio transport, policy enforcement, audit logging.
+- **mycelium-mcp**: MCP server -- 45 tools via rmcp 0.17, stdio transport, policy enforcement, audit logging.
 - **mycelium-cli**: CLI binary with clap.
 - **mycelium-windows**: Windows backend using sysinfo, WinAPI, WMI, NetAPI32, winreg.
 

@@ -106,6 +106,66 @@ pub async fn handle_resources(svc: &MyceliumMcpService, req: PidRequest) -> Resu
 	}
 }
 
+pub async fn handle_threads(svc: &MyceliumMcpService, req: PidRequest) -> Result<CallToolResult, McpError> {
+	use mycelium_core::policy::rule::ResourceContext;
+
+	let resource = format!("pid:{}", req.pid);
+	let ctx = ResourceContext {
+		pid: Some(req.pid),
+		..Default::default()
+	};
+	if let Some(result) = svc.check_policy_with_context("process_threads", Some(&resource), Some(&ctx)) {
+		return result;
+	}
+	if svc.is_dry_run() {
+		return dry_run_text("process_threads");
+	}
+
+	let platform = svc.platform();
+	let pid = req.pid;
+	match tokio::task::spawn_blocking(move || platform.list_process_threads(pid)).await {
+		Ok(Ok(threads)) => {
+			svc.log_success("process_threads", Some(&resource));
+			ok_json(&threads)
+		}
+		Ok(Err(e)) => {
+			svc.log_failure("process_threads", &e.to_string());
+			mapped_err(&e, Some(&ErrorContext { pid: Some(req.pid) }))
+		}
+		Err(e) => svc.handle_join_error("process_threads", e),
+	}
+}
+
+pub async fn handle_modules(svc: &MyceliumMcpService, req: PidRequest) -> Result<CallToolResult, McpError> {
+	use mycelium_core::policy::rule::ResourceContext;
+
+	let resource = format!("pid:{}", req.pid);
+	let ctx = ResourceContext {
+		pid: Some(req.pid),
+		..Default::default()
+	};
+	if let Some(result) = svc.check_policy_with_context("process_modules", Some(&resource), Some(&ctx)) {
+		return result;
+	}
+	if svc.is_dry_run() {
+		return dry_run_text("process_modules");
+	}
+
+	let platform = svc.platform();
+	let pid = req.pid;
+	match tokio::task::spawn_blocking(move || platform.list_process_modules(pid)).await {
+		Ok(Ok(modules)) => {
+			svc.log_success("process_modules", Some(&resource));
+			ok_json(&modules)
+		}
+		Ok(Err(e)) => {
+			svc.log_failure("process_modules", &e.to_string());
+			mapped_err(&e, Some(&ErrorContext { pid: Some(req.pid) }))
+		}
+		Err(e) => svc.handle_join_error("process_modules", e),
+	}
+}
+
 pub async fn handle_environment(svc: &MyceliumMcpService, req: PidRequest) -> Result<CallToolResult, McpError> {
 	use mycelium_core::policy::rule::ResourceContext;
 

@@ -1,6 +1,6 @@
 # MCP Server
 
-The `mycelium-mcp` binary exposes all 43 Platform methods as MCP tools over a JSON-RPC stdio transport. AI agents connect, discover tools via `tools/list`, and call them with typed JSON parameters. Every call is evaluated against the policy engine and logged to the audit trail.
+The `mycelium-mcp` binary exposes all 45 Platform methods as MCP tools over a JSON-RPC stdio transport. AI agents connect, discover tools via `tools/list`, and call them with typed JSON parameters. Every call is evaluated against the policy engine and logged to the audit trail.
 
 ## Building
 
@@ -74,9 +74,9 @@ The server responds to `initialize`, `notifications/initialized`, `tools/list`, 
 
 ## Tool List
 
-All 43 tools organized by category. Tools without parameters take an empty `arguments: {}` object. Tools with parameters require a JSON object matching the listed schema.
+All 45 tools organized by category. Tools without parameters take an empty `arguments: {}` object. Tools with parameters require a JSON object matching the listed schema.
 
-### Process (9 tools)
+### Process (11 tools)
 
 | Tool | Parameters | Description |
 |------|-----------|-------------|
@@ -84,9 +84,11 @@ All 43 tools organized by category. Tools without parameters take an empty `argu
 | `process_inspect` | `{ pid: u32 }` | Get detailed info for a single process |
 | `process_resources` | `{ pid: u32 }` | Get CPU, memory, I/O usage for a process |
 | `process_kill` | `{ pid: u32, signal: String }` | Send a signal (TERM, KILL, HUP, etc.) |
+| `process_threads` | `{ pid: u32 }` | List threads belonging to a process |
+| `process_modules` | `{ pid: u32 }` | List loaded modules (shared libraries / DLLs) for a process |
 | `process_environment` | `{ pid: u32 }` | Get environment variables for a process |
 | `process_privileges` | `{ pid: u32 }` | List token privileges for a process |
-| `process_handles` | `{ pid: u32 }` | List open handles (files, registry keys, mutexes, etc.) |
+| `process_handles` | `{ pid: u32 }` | List open handles (files, sockets, pipes, etc.) |
 | `process_pe_inspect` | `{ pid?: u32, path?: String }` | Parse PE headers (imports, exports, sections, characteristics) |
 | `process_token` | `{ pid: u32 }` | Inspect token security details (integrity, groups, elevation) |
 
@@ -163,8 +165,8 @@ All 43 tools organized by category. Tools without parameters take an empty `argu
 | `security_groups` | None | List system groups |
 | `security_modules` | None | List loaded kernel modules |
 | `security_status` | None | Security status (SELinux, AppArmor, firewall, SSH) |
-| `security_persistence` | None | Scan Windows persistence mechanisms (registry, services, tasks, startup, WMI, COM) |
-| `security_detect_hooks` | `{ pid: u32 }` | Detect API hooks (inline, IAT, EAT) in a process |
+| `security_persistence` | None | Scan persistence mechanisms (Linux: cron, systemd timers, init scripts, XDG autostart, shell profiles, udev; Windows: registry, services, tasks, startup, WMI, COM) |
+| `security_detect_hooks` | `{ pid: u32 }` | Detect hooks in a process (Linux: LD_PRELOAD, suspicious libraries, ptrace; Windows: inline, IAT, EAT) |
 
 ## Response Format
 
@@ -238,7 +240,7 @@ Fields:
 │  main.rs          lib.rs            tools/mod.rs     │
 │  ┌──────────┐    ┌──────────────┐  ┌──────────────┐ │
 │  │ CLI args │───▶│ MCP Service  │──│ Tool Router  │ │
-│  │ stdio()  │    │ check_policy │  │ 43 #[tool]   │ │
+│  │ stdio()  │    │ check_policy │  │ 45 #[tool]   │ │
 │  └──────────┘    │ log_success  │  │ methods      │ │
 │                  │ log_failure  │  └──────┬───────┘ │
 │                  └──────┬───────┘         │         │

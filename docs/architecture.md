@@ -12,7 +12,7 @@ Mycelium/
 │   ├── mycelium-core/       Core types, traits, errors, policy engine
 │   ├── mycelium-linux/      Linux backend (/proc, /sys, nix)
 │   ├── mycelium-cli/        CLI binary (clap)
-│   ├── mycelium-mcp/        MCP server (43 tools, rmcp 0.17, stdio)
+│   ├── mycelium-mcp/        MCP server (45 tools, rmcp 0.17, stdio)
 │   └── mycelium-windows/    Windows backend (sysinfo, WinAPI, WMI)
 ├── examples/
 │   └── policy.toml          Example policy configuration
@@ -27,7 +27,7 @@ Mycelium/
 | `mycelium-core` | Types, `Platform` trait, `MyceliumError`, policy engine. Zero dependencies by default; optional `serde` and `toml` features. | None (or `serde`/`toml` opt-in) |
 | `mycelium-linux` | Implements `Platform` for Linux. Reads `/proc`, `/sys`, calls `systemctl`/`journalctl`. | `mycelium-core`, `nix 0.29` |
 | `mycelium-cli` | Binary `mycelium` with subcommands for every Platform method. Table and JSON output. | `mycelium-core` (serde, toml), `mycelium-linux`, `clap 4`, `serde_json` |
-| `mycelium-mcp` | MCP server exposing all 43 tools via JSON-RPC stdio transport. | `mycelium-core` (serde, toml), `mycelium-linux`, `rmcp 0.17`, `tokio`, `clap 4`, `schemars` |
+| `mycelium-mcp` | MCP server exposing all 45 tools via JSON-RPC stdio transport. | `mycelium-core` (serde, toml), `mycelium-linux`, `rmcp 0.17`, `tokio`, `clap 4`, `schemars` |
 | `mycelium-windows` | Windows backend using sysinfo, WinAPI, WMI, NetAPI32, and winreg. Implements all 46 Platform methods. | `mycelium-core`, `sysinfo`, `windows 0.61`, `wmi`, `winreg` |
 
 ## Data Flow
@@ -86,7 +86,8 @@ OutputFormat::Json ◄──────────── Vec<ProcessInfo>
 | **3** | Complete | Write operations (kill, firewall, service control, sysctl, direct memory access) |
 | **4** | Complete | Windows backend (sysinfo, WinAPI, WMI, NetAPI32, SCM, token APIs) |
 | **4.5** | Complete | Security research features (handles, PE parsing, token inspection, persistence scanning, hook detection, memory pattern search) |
-| **5** | Not started | eBPF probes (syscall tracing, network monitoring) |
+| **5** | Complete | Linux backend feature parity (threads, modules, capabilities, FD handles, token inspection, memory search, persistence scanning, hook detection) |
+| **6** | Not started | eBPF probes (syscall tracing, network monitoring) |
 
 ### Phase 1 Scope
 
@@ -95,7 +96,7 @@ OutputFormat::Json ◄──────────── Vec<ProcessInfo>
 - Policy engine with roles, capabilities, resource filters, specificity-based evaluation
 - CLI with table and JSON output for every read operation
 - Policy management commands (show, list, validate)
-- 213+ unit tests (policy evaluation, TOML config parsing, Windows backend helpers)
+- 202 unit tests (policy evaluation, TOML config parsing, Linux/Windows backend helpers)
 
 ### Phase 2 Scope
 

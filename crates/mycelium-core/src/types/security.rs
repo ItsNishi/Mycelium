@@ -64,12 +64,20 @@ pub struct LsmStatus {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum PersistenceType {
+	// Windows
 	RegistryRun,
 	ScheduledTask,
 	Service,
 	StartupFolder,
 	WmiSubscription,
 	ComHijack,
+	// Linux
+	CronJob,
+	SystemdTimer,
+	InitScript,
+	XdgAutostart,
+	ShellProfile,
+	UdevRule,
 }
 
 /// A discovered persistence entry.
@@ -88,9 +96,14 @@ pub struct PersistenceEntry {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum HookType {
+	// Windows
 	InlineHook,
 	IatHook,
 	EatHook,
+	// Linux
+	LdPreload,
+	GotPltHook,
+	PtraceAttach,
 }
 
 /// A detected API hook.

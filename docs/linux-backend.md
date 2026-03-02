@@ -35,6 +35,11 @@ impl Default for LinuxPlatform {
 | `inspect_process` | `/proc/[pid]/stat`, `/proc/[pid]/status`, `/proc/[pid]/cmdline` | Single PID lookup |
 | `process_resources` | `/proc/[pid]/stat`, `/proc/[pid]/status`, `/proc/[pid]/fd`, `/proc/[pid]/io`, `/proc/meminfo` | FD count via directory listing, I/O bytes, memory percent |
 | `kill_process` | `nix::sys::signal::kill` | Sends signal to process via `kill(2)` |
+| `list_process_threads` | `/proc/[pid]/task/`, `/proc/[pid]/task/[tid]/stat` | Reads task directory, priority from field 17 of stat. Cap: 10,000 threads. |
+| `list_process_modules` | `/proc/[pid]/maps`, `/proc/[pid]/exe` | Filters `.so` files and main executable from memory maps. Groups contiguous regions by path. |
+| `list_process_privileges` | `/proc/[pid]/status` (`CapPrm:`, `CapEff:`) | Decodes capability hex bitmasks against 41-entry table (CAP_CHOWN through CAP_CHECKPOINT_RESTORE) |
+| `list_process_handles` | `/proc/[pid]/fd/`, `/proc/[pid]/fdinfo/` | Readlink each FD for target, classify (Socket/Pipe/File/AnonInode), parse octal flags from fdinfo |
+| `inspect_process_token` | `/proc/[pid]/status`, `/proc/[pid]/stat` | UIDs/GIDs, groups, capabilities, seccomp mode, session ID. UID 0=System, <1000=High, >=1000=Medium. |
 
 **Parsing notes:**
 - `/proc/[pid]/stat` -- the `comm` field (field 1) is in parentheses and may contain spaces. Parsing finds the last `)` to locate field boundaries correctly.
@@ -53,6 +58,7 @@ impl Default for LinuxPlatform {
 | `process_memory_maps` | `/proc/[pid]/maps` | Parses virtual memory regions (address range, perms, offset, device, inode, pathname) |
 | `read_process_memory` | `/proc/[pid]/mem` | Seek + read, 1 MiB max per call, requires ptrace or root |
 | `write_process_memory` | `/proc/[pid]/mem` | Seek + write, requires ptrace or root |
+| `search_process_memory` | `/proc/[pid]/maps`, `/proc/[pid]/mem` | Reads 1 MiB chunks with overlap, scans for byte/UTF-8/UTF-16 patterns. Skips [vvar]/[vsyscall] and regions >256 MiB. Max 10,000 matches. |
 
 **Parsing notes:**
 - All `/proc/meminfo` and `/proc/[pid]/status` memory values are in kB, multiplied by 1024 to get bytes.
@@ -190,6 +196,8 @@ Format: `TIMESTAMP HOSTNAME IDENT[PID]: MESSAGE`. The PID is extracted from squa
 | `list_groups` | `/etc/group` | Colon-delimited |
 | `list_kernel_modules` | `/proc/modules` | Space-delimited, `used_by` is comma-separated or `-` |
 | `security_status` | `/sys/fs/selinux/enforce`, `/sys/kernel/security/apparmor/profiles`, `nft`/`iptables`, `/etc/ssh/sshd_config` | Composite check |
+| `list_persistence_entries` | `/var/spool/cron/crontabs/`, `/etc/crontab`, `/etc/cron.d/`, `/etc/systemd/system/*.timer`, `/usr/lib/systemd/system/*.timer`, `/etc/init.d/`, `/etc/xdg/autostart/`, `~/.config/autostart/`, `/etc/profile.d/`, `~/.bashrc`, `~/.zshrc`, `/etc/udev/rules.d/` | Scans 6 persistence categories. 500 per-source cap, 2000 total. |
+| `detect_hooks` | `/proc/[pid]/environ`, `/proc/[pid]/maps`, `/proc/[pid]/status` | LD_PRELOAD detection, suspicious library path scanning (outside /usr/lib, /lib, etc.), ptrace attachment via TracerPid |
 
 **Security status checks:**
 - **SELinux:** `/sys/fs/selinux/enforce` exists? `1`=enforcing, `0`=permissive
@@ -218,6 +226,14 @@ Format: `TIMESTAMP HOSTNAME IDENT[PID]: MESSAGE`. The PID is extracted from squa
 | Users/groups | Yes | -- | `/etc/passwd` and `/etc/group` are world-readable |
 | Kernel modules | Yes | -- | `/proc/modules` is world-readable |
 | Security status | Partial | Full | SSH config may be restricted; firewall queries need root |
+| Process threads | Partial | Full | Own process threads always visible; other users' require root |
+| Process modules | Partial | Full | `/proc/[pid]/maps` may be restricted by `ptrace_scope` |
+| Process privileges | Partial | Full | `/proc/[pid]/status` capabilities may be restricted |
+| Process handles (FDs) | Partial | Full | `/proc/[pid]/fd/` requires same-user or root |
+| Process token | Partial | Full | `/proc/[pid]/status` may restrict fields for other users |
+| Memory search | No | Yes | Requires ptrace or root for `/proc/[pid]/mem` access |
+| Persistence scan | Partial | Full | User crontabs and some system dirs may be restricted |
+| Hook detection | Partial | Full | `/proc/[pid]/environ` and `/proc/[pid]/maps` may need root |
 
 ## Edge Cases and Known Limitations
 

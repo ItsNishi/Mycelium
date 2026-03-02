@@ -1,7 +1,11 @@
 //! Process queries and control via /proc and signals.
 
 use mycelium_core::error::{MyceliumError, Result};
-use mycelium_core::types::{ProcessInfo, ProcessResource, ProcessState, Signal};
+use mycelium_core::types::{
+	HandleInfo, PrivilegeInfo, ProcessInfo, ProcessModule, ProcessResource,
+	ProcessState, Signal, ThreadInfo, TokenGroup, TokenInfo,
+};
+use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 
@@ -319,6 +323,417 @@ pub fn kill_process(pid: u32, signal: Signal) -> Result<()> {
 	)
 }
 
+// ---- Linux capabilities table ----
+// CAP_CHOWN (0) through CAP_CHECKPOINT_RESTORE (40)
+
+const CAPABILITY_NAMES: &[&str] = &[
+	"CAP_CHOWN",                  // 0
+	"CAP_DAC_OVERRIDE",           // 1
+	"CAP_DAC_READ_SEARCH",        // 2
+	"CAP_FOWNER",                 // 3
+	"CAP_FSETID",                 // 4
+	"CAP_KILL",                   // 5
+	"CAP_SETGID",                 // 6
+	"CAP_SETUID",                 // 7
+	"CAP_SETPCAP",                // 8
+	"CAP_LINUX_IMMUTABLE",        // 9
+	"CAP_NET_BIND_SERVICE",       // 10
+	"CAP_NET_BROADCAST",          // 11
+	"CAP_NET_ADMIN",              // 12
+	"CAP_NET_RAW",                // 13
+	"CAP_IPC_LOCK",               // 14
+	"CAP_IPC_OWNER",              // 15
+	"CAP_SYS_MODULE",             // 16
+	"CAP_SYS_RAWIO",              // 17
+	"CAP_SYS_CHROOT",             // 18
+	"CAP_SYS_PTRACE",             // 19
+	"CAP_SYS_PACCT",              // 20
+	"CAP_SYS_ADMIN",              // 21
+	"CAP_SYS_BOOT",               // 22
+	"CAP_SYS_NICE",               // 23
+	"CAP_SYS_RESOURCE",           // 24
+	"CAP_SYS_TIME",               // 25
+	"CAP_SYS_TTY_CONFIG",         // 26
+	"CAP_MKNOD",                  // 27
+	"CAP_LEASE",                  // 28
+	"CAP_AUDIT_WRITE",            // 29
+	"CAP_AUDIT_CONTROL",          // 30
+	"CAP_SETFCAP",                // 31
+	"CAP_MAC_OVERRIDE",           // 32
+	"CAP_MAC_ADMIN",              // 33
+	"CAP_SYSLOG",                 // 34
+	"CAP_WAKE_ALARM",             // 35
+	"CAP_BLOCK_SUSPEND",          // 36
+	"CAP_AUDIT_READ",             // 37
+	"CAP_PERFMON",                // 38
+	"CAP_BPF",                    // 39
+	"CAP_CHECKPOINT_RESTORE",     // 40
+];
+
+/// Decode a capability hex bitmask into a set of bit indices.
+fn decode_caps(hex: &str) -> u64 {
+	u64::from_str_radix(hex.trim(), 16).unwrap_or(0)
+}
+
+/// Parse capabilities from /proc/[pid]/status content.
+/// Returns (permitted_bitmask, effective_bitmask).
+fn parse_capabilities(content: &str) -> (u64, u64) {
+	let mut permitted = 0u64;
+	let mut effective = 0u64;
+	for line in content.lines() {
+		if let Some(hex) = line.strip_prefix("CapPrm:") {
+			permitted = decode_caps(hex);
+		} else if let Some(hex) = line.strip_prefix("CapEff:") {
+			effective = decode_caps(hex);
+		}
+	}
+	(permitted, effective)
+}
+
+/// Build a list of PrivilegeInfo from capability bitmasks.
+fn capabilities_to_privileges(permitted: u64, effective: u64) -> Vec<PrivilegeInfo> {
+	let mut privs = Vec::new();
+	for (i, name) in CAPABILITY_NAMES.iter().enumerate() {
+		if permitted & (1u64 << i) != 0 {
+			privs.push(PrivilegeInfo {
+				name: name.to_string(),
+				enabled: effective & (1u64 << i) != 0,
+			});
+		}
+	}
+	privs
+}
+
+// ---- Thread listing ----
+
+const MAX_THREADS: usize = 10_000;
+
+/// Parse a /proc/[pid]/task/[tid]/stat file to extract the thread priority.
+fn parse_thread_priority(content: &str, tid: u32) -> i32 {
+	// Field 17 (0-indexed) is the priority
+	parse_stat_content(content, tid)
+		.ok()
+		.and_then(|fields| fields.get(17).and_then(|v| v.parse().ok()))
+		.unwrap_or(0)
+}
+
+pub fn list_process_threads(pid: u32) -> Result<Vec<ThreadInfo>> {
+	let task_dir = format!("/proc/{pid}/task");
+	if !Path::new(&task_dir).exists() {
+		return Err(MyceliumError::NotFound(format!("process {pid}")));
+	}
+
+	let entries = fs::read_dir(&task_dir).map_err(|e| match e.kind() {
+		std::io::ErrorKind::PermissionDenied => {
+			MyceliumError::PermissionDenied(format!("cannot read {task_dir}"))
+		}
+		_ => MyceliumError::IoError(e),
+	})?;
+
+	let mut threads = Vec::new();
+	for entry in entries {
+		let entry = entry?;
+		let Some(tid) = entry.file_name().to_str().and_then(|s| s.parse::<u32>().ok()) else {
+			continue;
+		};
+
+		let stat_path = format!("/proc/{pid}/task/{tid}/stat");
+		let priority = fs::read_to_string(&stat_path)
+			.ok()
+			.map(|c| parse_thread_priority(&c, tid))
+			.unwrap_or(0);
+
+		threads.push(ThreadInfo {
+			tid,
+			pid,
+			priority,
+		});
+
+		if threads.len() >= MAX_THREADS {
+			break;
+		}
+	}
+
+	threads.sort_by_key(|t| t.tid);
+	Ok(threads)
+}
+
+// ---- Module listing ----
+
+pub fn list_process_modules(pid: u32) -> Result<Vec<ProcessModule>> {
+	let regions = crate::memory::process_memory_maps(pid)?;
+
+	// Get the main executable path
+	let exe_path = fs::read_link(format!("/proc/{pid}/exe"))
+		.ok()
+		.map(|p| p.to_string_lossy().to_string());
+
+	// Group contiguous regions by pathname, tracking min start and max end
+	let mut module_map: HashMap<String, (u64, u64)> = HashMap::new();
+
+	for region in &regions {
+		let path = match &region.pathname {
+			Some(p) if p.contains(".so") || exe_path.as_deref() == Some(p.as_str()) => p,
+			_ => continue,
+		};
+
+		let entry = module_map
+			.entry(path.clone())
+			.or_insert((region.start_address, region.end_address));
+		if region.start_address < entry.0 {
+			entry.0 = region.start_address;
+		}
+		if region.end_address > entry.1 {
+			entry.1 = region.end_address;
+		}
+	}
+
+	let mut modules: Vec<ProcessModule> = module_map
+		.into_iter()
+		.map(|(path, (base, end))| {
+			let name = path
+				.rsplit('/')
+				.next()
+				.unwrap_or(&path)
+				.to_string();
+			ProcessModule {
+				name,
+				path,
+				base_address: base,
+				size: end - base,
+			}
+		})
+		.collect();
+
+	modules.sort_by_key(|m| m.base_address);
+	Ok(modules)
+}
+
+// ---- Privilege listing ----
+
+pub fn list_process_privileges(pid: u32) -> Result<Vec<PrivilegeInfo>> {
+	let status_path = format!("/proc/{pid}/status");
+	if !Path::new(&format!("/proc/{pid}")).exists() {
+		return Err(MyceliumError::NotFound(format!("process {pid}")));
+	}
+
+	let content = fs::read_to_string(&status_path).map_err(|e| match e.kind() {
+		std::io::ErrorKind::PermissionDenied => {
+			MyceliumError::PermissionDenied(format!("cannot read {status_path}"))
+		}
+		_ => MyceliumError::IoError(e),
+	})?;
+
+	let (permitted, effective) = parse_capabilities(&content);
+	Ok(capabilities_to_privileges(permitted, effective))
+}
+
+// ---- Handle / file descriptor listing ----
+
+/// Classify an fd target path into an object type.
+fn classify_fd_target(target: &str) -> &'static str {
+	if target.starts_with("socket:") {
+		"Socket"
+	} else if target.starts_with("pipe:") {
+		"Pipe"
+	} else if target.starts_with("anon_inode:") {
+		"AnonInode"
+	} else if target.starts_with('/') {
+		"File"
+	} else {
+		"Other"
+	}
+}
+
+/// Parse the octal flags from /proc/[pid]/fdinfo/[fd].
+fn parse_fdinfo_flags(content: &str) -> u32 {
+	content
+		.lines()
+		.find(|l| l.starts_with("flags:"))
+		.and_then(|l| l.split_whitespace().nth(1))
+		.and_then(|v| u32::from_str_radix(v.trim(), 8).ok())
+		.unwrap_or(0)
+}
+
+pub fn list_process_handles(pid: u32) -> Result<Vec<HandleInfo>> {
+	let fd_dir = format!("/proc/{pid}/fd");
+	if !Path::new(&format!("/proc/{pid}")).exists() {
+		return Err(MyceliumError::NotFound(format!("process {pid}")));
+	}
+
+	let entries = fs::read_dir(&fd_dir).map_err(|e| match e.kind() {
+		std::io::ErrorKind::PermissionDenied => {
+			MyceliumError::PermissionDenied(format!("cannot read {fd_dir}"))
+		}
+		_ => MyceliumError::IoError(e),
+	})?;
+
+	let mut handles = Vec::new();
+	for entry in entries {
+		let entry = entry?;
+		let fd_str = entry.file_name();
+		let Some(fd_num) = fd_str.to_str().and_then(|s| s.parse::<u64>().ok()) else {
+			continue;
+		};
+
+		let target = fs::read_link(entry.path())
+			.ok()
+			.map(|p| p.to_string_lossy().to_string())
+			.unwrap_or_default();
+
+		let object_type = classify_fd_target(&target).to_string();
+
+		let flags_path = format!("/proc/{pid}/fdinfo/{fd_num}");
+		let access_mask = fs::read_to_string(&flags_path)
+			.ok()
+			.map(|c| parse_fdinfo_flags(&c))
+			.unwrap_or(0);
+
+		handles.push(HandleInfo {
+			handle_value: fd_num,
+			object_type,
+			name: if target.is_empty() {
+				None
+			} else {
+				Some(target)
+			},
+			access_mask,
+		});
+	}
+
+	handles.sort_by_key(|h| h.handle_value);
+	Ok(handles)
+}
+
+// ---- Token inspection ----
+
+/// Parse UIDs from /proc/[pid]/status. Returns (real, effective, saved, fs).
+fn parse_status_ids(content: &str, prefix: &str) -> Vec<u32> {
+	content
+		.lines()
+		.find(|l| l.starts_with(prefix))
+		.map(|l| {
+			l.split_whitespace()
+				.skip(1)
+				.filter_map(|v| v.parse().ok())
+				.collect()
+		})
+		.unwrap_or_default()
+}
+
+/// Parse the Groups: line from /proc/[pid]/status.
+fn parse_status_groups(content: &str) -> Vec<u32> {
+	content
+		.lines()
+		.find(|l| l.starts_with("Groups:"))
+		.map(|l| {
+			l.split_whitespace()
+				.skip(1)
+				.filter_map(|v| v.parse().ok())
+				.collect()
+		})
+		.unwrap_or_default()
+}
+
+/// Parse the Seccomp: field from /proc/[pid]/status.
+fn parse_seccomp(content: &str) -> u32 {
+	content
+		.lines()
+		.find(|l| l.starts_with("Seccomp:"))
+		.and_then(|l| l.split_whitespace().nth(1))
+		.and_then(|v| v.parse().ok())
+		.unwrap_or(0)
+}
+
+fn groupname_for_gid(gid: u32) -> String {
+	nix::unistd::Group::from_gid(nix::unistd::Gid::from_raw(gid))
+		.ok()
+		.flatten()
+		.map(|g| g.name)
+		.unwrap_or_else(|| gid.to_string())
+}
+
+pub fn inspect_process_token(pid: u32) -> Result<TokenInfo> {
+	let status_path = format!("/proc/{pid}/status");
+	if !Path::new(&format!("/proc/{pid}")).exists() {
+		return Err(MyceliumError::NotFound(format!("process {pid}")));
+	}
+
+	let content = fs::read_to_string(&status_path).map_err(|e| match e.kind() {
+		std::io::ErrorKind::PermissionDenied => {
+			MyceliumError::PermissionDenied(format!("cannot read {status_path}"))
+		}
+		_ => MyceliumError::IoError(e),
+	})?;
+
+	let uids = parse_status_ids(&content, "Uid:");
+	let gids = parse_status_ids(&content, "Gid:");
+	let effective_uid = uids.get(1).copied().unwrap_or(0);
+	let effective_gid = gids.get(1).copied().unwrap_or(0);
+
+	let user = username_for_uid(effective_uid);
+
+	// Integrity level mapping
+	let integrity_level = if effective_uid == 0 {
+		"System"
+	} else if effective_uid < 1000 {
+		"High"
+	} else {
+		"Medium"
+	}
+	.to_string();
+
+	let is_elevated = effective_uid == 0;
+
+	// Seccomp check for is_restricted
+	let seccomp = parse_seccomp(&content);
+	let is_restricted = seccomp == 2; // SECCOMP_MODE_FILTER
+
+	// Session ID from /proc/[pid]/stat field 5
+	let session_id = parse_stat(pid)
+		.ok()
+		.and_then(|fields| fields.get(5).and_then(|v| v.parse().ok()))
+		.unwrap_or(0);
+
+	// Groups
+	let group_ids = parse_status_groups(&content);
+	let groups: Vec<TokenGroup> = std::iter::once(effective_gid)
+		.chain(group_ids)
+		.collect::<Vec<_>>()
+		.into_iter()
+		.map(|gid| {
+			let name = groupname_for_gid(gid);
+			TokenGroup {
+				name,
+				sid: gid.to_string(),
+				attributes: vec!["Enabled".to_string()],
+			}
+		})
+		.collect();
+
+	// Capabilities as privileges
+	let (permitted, effective) = parse_capabilities(&content);
+	let privileges = capabilities_to_privileges(permitted, effective);
+
+	Ok(TokenInfo {
+		pid,
+		user,
+		integrity_level,
+		token_type: "Primary".to_string(),
+		impersonation_level: None,
+		elevation_type: if is_elevated {
+			"Full".to_string()
+		} else {
+			"Limited".to_string()
+		},
+		is_elevated,
+		is_restricted,
+		session_id,
+		groups,
+		privileges,
+	})
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;
@@ -455,5 +870,227 @@ mod tests {
 		let mut fields: Vec<String> = (0..52).map(|i| i.to_string()).collect();
 		fields[23] = "not_a_number".to_string();
 		assert_eq!(rss_bytes_from_stat(&fields), 0);
+	}
+
+	// decode_caps tests
+
+	#[test]
+	fn test_decode_caps_zero() {
+		assert_eq!(decode_caps("0000000000000000"), 0);
+	}
+
+	#[test]
+	fn test_decode_caps_all_set() {
+		assert_eq!(decode_caps("000001ffffffffff"), 0x1ffffffffff);
+	}
+
+	#[test]
+	fn test_decode_caps_with_whitespace() {
+		assert_eq!(decode_caps("  00000000a80425fb\n"), 0xa80425fb);
+	}
+
+	#[test]
+	fn test_decode_caps_invalid() {
+		assert_eq!(decode_caps("zzzz"), 0);
+	}
+
+	// parse_capabilities tests
+
+	#[test]
+	fn test_parse_capabilities_normal() {
+		let content = "Name:\ttest\nCapPrm:\t000001ffffffffff\nCapEff:\t000001ffffffffff\n";
+		let (prm, eff) = parse_capabilities(content);
+		assert_eq!(prm, 0x1ffffffffff);
+		assert_eq!(eff, 0x1ffffffffff);
+	}
+
+	#[test]
+	fn test_parse_capabilities_partial() {
+		let content = "Name:\ttest\nCapPrm:\t0000000000003c00\nCapEff:\t0000000000000400\n";
+		let (prm, eff) = parse_capabilities(content);
+		// CAP_NET_BIND_SERVICE(10), CAP_NET_BROADCAST(11), CAP_NET_ADMIN(12), CAP_NET_RAW(13)
+		assert_eq!(prm, 0x3c00);
+		// Only CAP_NET_BIND_SERVICE(10) effective
+		assert_eq!(eff, 0x0400);
+	}
+
+	#[test]
+	fn test_parse_capabilities_missing() {
+		let content = "Name:\ttest\nUid:\t1000\t1000\t1000\t1000\n";
+		let (prm, eff) = parse_capabilities(content);
+		assert_eq!(prm, 0);
+		assert_eq!(eff, 0);
+	}
+
+	// capabilities_to_privileges tests
+
+	#[test]
+	fn test_capabilities_to_privileges_root() {
+		// All 41 caps permitted and effective
+		let all = 0x1ffffffffff_u64;
+		let privs = capabilities_to_privileges(all, all);
+		assert_eq!(privs.len(), 41);
+		assert!(privs.iter().all(|p| p.enabled));
+		assert_eq!(privs[0].name, "CAP_CHOWN");
+		assert_eq!(privs[40].name, "CAP_CHECKPOINT_RESTORE");
+	}
+
+	#[test]
+	fn test_capabilities_to_privileges_none() {
+		let privs = capabilities_to_privileges(0, 0);
+		assert!(privs.is_empty());
+	}
+
+	#[test]
+	fn test_capabilities_to_privileges_permitted_not_effective() {
+		// CAP_NET_RAW (13) permitted but not effective
+		let permitted = 1u64 << 13;
+		let effective = 0u64;
+		let privs = capabilities_to_privileges(permitted, effective);
+		assert_eq!(privs.len(), 1);
+		assert_eq!(privs[0].name, "CAP_NET_RAW");
+		assert!(!privs[0].enabled);
+	}
+
+	// parse_thread_priority tests
+
+	#[test]
+	fn test_parse_thread_priority_normal() {
+		// man proc(5) field 18 is priority (1-indexed) -> vector index 17 (0-indexed)
+		// pid(0) comm(1) state(2) ppid(3) pgrp(4) session(5) tty(6) tpgid(7) flags(8)
+		// minflt(9) cminflt(10) majflt(11) cmajflt(12) utime(13) stime(14) cutime(15)
+		// cstime(16) priority(17)
+		let content = "42 (bash) S 1 42 42 0 -1 4194560 0 0 0 0 10 5 0 0 20 0 1 0 100";
+		assert_eq!(parse_thread_priority(content, 42), 20);
+	}
+
+	#[test]
+	fn test_parse_thread_priority_negative() {
+		let content = "42 (bash) S 1 42 42 0 -1 4194560 0 0 0 0 10 5 0 0 -5 0 1 0 100";
+		assert_eq!(parse_thread_priority(content, 42), -5);
+	}
+
+	#[test]
+	fn test_parse_thread_priority_malformed() {
+		assert_eq!(parse_thread_priority("garbage", 42), 0);
+	}
+
+	// classify_fd_target tests
+
+	#[test]
+	fn test_classify_fd_target_socket() {
+		assert_eq!(classify_fd_target("socket:[12345]"), "Socket");
+	}
+
+	#[test]
+	fn test_classify_fd_target_pipe() {
+		assert_eq!(classify_fd_target("pipe:[67890]"), "Pipe");
+	}
+
+	#[test]
+	fn test_classify_fd_target_file() {
+		assert_eq!(classify_fd_target("/usr/lib/libc.so.6"), "File");
+	}
+
+	#[test]
+	fn test_classify_fd_target_anon_inode() {
+		assert_eq!(classify_fd_target("anon_inode:[eventpoll]"), "AnonInode");
+	}
+
+	#[test]
+	fn test_classify_fd_target_other() {
+		assert_eq!(classify_fd_target("[vvar]"), "Other");
+	}
+
+	// parse_fdinfo_flags tests
+
+	#[test]
+	fn test_parse_fdinfo_flags_read_only() {
+		// Octal 0100000 = O_LARGEFILE on many archs
+		let content = "pos:\t0\nflags:\t0100000\nmnt_id:\t25\n";
+		assert_eq!(parse_fdinfo_flags(content), 0o100000);
+	}
+
+	#[test]
+	fn test_parse_fdinfo_flags_read_write() {
+		let content = "pos:\t0\nflags:\t0100002\nmnt_id:\t25\n";
+		assert_eq!(parse_fdinfo_flags(content), 0o100002);
+	}
+
+	#[test]
+	fn test_parse_fdinfo_flags_missing() {
+		let content = "pos:\t0\nmnt_id:\t25\n";
+		assert_eq!(parse_fdinfo_flags(content), 0);
+	}
+
+	// parse_status_ids tests
+
+	#[test]
+	fn test_parse_status_ids_normal() {
+		let content = "Uid:\t1000\t1000\t1000\t1000\nGid:\t100\t100\t100\t100\n";
+		let uids = parse_status_ids(content, "Uid:");
+		assert_eq!(uids, vec![1000, 1000, 1000, 1000]);
+		let gids = parse_status_ids(content, "Gid:");
+		assert_eq!(gids, vec![100, 100, 100, 100]);
+	}
+
+	#[test]
+	fn test_parse_status_ids_root() {
+		let content = "Uid:\t0\t0\t0\t0\n";
+		let uids = parse_status_ids(content, "Uid:");
+		assert_eq!(uids, vec![0, 0, 0, 0]);
+	}
+
+	#[test]
+	fn test_parse_status_ids_missing() {
+		let content = "Name:\ttest\n";
+		let uids = parse_status_ids(content, "Uid:");
+		assert!(uids.is_empty());
+	}
+
+	// parse_status_groups tests
+
+	#[test]
+	fn test_parse_status_groups_normal() {
+		let content = "Groups:\t100 10 27 999\n";
+		assert_eq!(parse_status_groups(content), vec![100, 10, 27, 999]);
+	}
+
+	#[test]
+	fn test_parse_status_groups_empty() {
+		let content = "Groups:\t\n";
+		assert!(parse_status_groups(content).is_empty());
+	}
+
+	#[test]
+	fn test_parse_status_groups_missing() {
+		let content = "Name:\ttest\n";
+		assert!(parse_status_groups(content).is_empty());
+	}
+
+	// parse_seccomp tests
+
+	#[test]
+	fn test_parse_seccomp_disabled() {
+		let content = "Seccomp:\t0\n";
+		assert_eq!(parse_seccomp(content), 0);
+	}
+
+	#[test]
+	fn test_parse_seccomp_strict() {
+		let content = "Seccomp:\t1\n";
+		assert_eq!(parse_seccomp(content), 1);
+	}
+
+	#[test]
+	fn test_parse_seccomp_filter() {
+		let content = "Seccomp:\t2\n";
+		assert_eq!(parse_seccomp(content), 2);
+	}
+
+	#[test]
+	fn test_parse_seccomp_missing() {
+		let content = "Name:\ttest\n";
+		assert_eq!(parse_seccomp(content), 0);
 	}
 }
