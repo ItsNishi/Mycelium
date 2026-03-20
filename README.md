@@ -245,6 +245,10 @@ mycelium policy validate policy.toml
 | **4.5** | ✅ Complete | Security research (handles, PE parsing, token inspection, persistence, hook detection, memory search) |
 | **5** | ✅ Complete | Linux backend feature parity (threads, modules, capabilities, FD handles, token inspection, memory search, persistence scanning, hook detection) |
 | **6** | ✅ Complete | eBPF probes (syscall tracing, network monitoring via aya, feature-gated) |
+| **7** | Planned | Advanced threat detection (rootkit scanning, code injection, anti-debug, expanded eBPF probes) |
+| **8** | Planned | Signature & heuristic scanning (YARA, entropy analysis, string extraction, IOC matching, behavioral heuristics) |
+
+See [TODO.md](TODO.md) for detailed phase breakdowns and [BACKLOG.md](BACKLOG.md) for the feature wishlist.
 
 ## 🛠️ Development
 
@@ -286,6 +290,8 @@ cargo build --workspace --features mycelium-linux/ebpf
 | [Development Guide](docs/development.md) | Build, test, conventions, adding methods and backends |
 | [Changelog](CHANGELOG.md) | All notable changes by version |
 | [Contributing](CONTRIBUTING.md) | Guidelines for contributors |
+| [TODO](TODO.md) | Planned security/RE phases (7-10) |
+| [Backlog](BACKLOG.md) | Feature wishlist (platform, observability, extensibility) |
 
 ## 📄 License
 
