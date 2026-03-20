@@ -12,6 +12,18 @@ const MAX_ENTRIES_PER_SOURCE: usize = 500;
 /// Hard cap on the total number of entries returned.
 const MAX_TOTAL_ENTRIES: usize = 2000;
 
+/// Win32 service type: runs in its own process.
+const SERVICE_WIN32_OWN_PROCESS: u32 = 0x10;
+
+/// Win32 service type: shares a process with other services.
+const SERVICE_WIN32_SHARE_PROCESS: u32 = 0x20;
+
+/// Bitmask matching any Win32 service type.
+const SERVICE_WIN32_TYPE_MASK: u32 = SERVICE_WIN32_OWN_PROCESS | SERVICE_WIN32_SHARE_PROCESS;
+
+/// Service start type: the service is disabled and will not start.
+const SERVICE_DISABLED: u32 = 4;
+
 /// Collect persistence entries from all Windows subsystems.
 ///
 /// Each scanner catches its own errors internally so that a failure in one
@@ -162,9 +174,9 @@ fn scan_services(entries: &mut Vec<PersistenceEntry>) {
 			continue;
 		};
 
-		// Only include Win32 services (OwnProcess = 0x10, ShareProcess = 0x20).
+		// Only include Win32 services (own-process or share-process).
 		let svc_type: u32 = subkey.get_value("Type").unwrap_or(0);
-		if svc_type & 0x30 == 0 {
+		if svc_type & SERVICE_WIN32_TYPE_MASK == 0 {
 			continue;
 		}
 
@@ -178,8 +190,8 @@ fn scan_services(entries: &mut Vec<PersistenceEntry>) {
 			continue;
 		}
 
-		let start: u32 = subkey.get_value("Start").unwrap_or(4);
-		let enabled = start != 4; // 4 = disabled
+		let start: u32 = subkey.get_value("Start").unwrap_or(SERVICE_DISABLED);
+		let enabled = start != SERVICE_DISABLED;
 
 		let display_name: Option<String> = subkey.get_value::<String, _>("DisplayName").ok();
 

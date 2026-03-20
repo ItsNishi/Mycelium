@@ -37,8 +37,11 @@ fn scan_cron_jobs(entries: &mut Vec<PersistenceEntry>) {
 	// System crontab
 	scan_crontab_file("/etc/crontab", entries);
 
-	// Per-user crontabs
+	// Per-user crontabs (path varies by distro)
+	// Debian/Ubuntu: /var/spool/cron/crontabs
+	// RHEL/Fedora/Arch/SUSE: /var/spool/cron
 	scan_cron_dir("/var/spool/cron/crontabs", entries);
+	scan_cron_dir("/var/spool/cron", entries);
 
 	// cron.d drop-in directory
 	scan_cron_dir("/etc/cron.d", entries);
@@ -357,29 +360,46 @@ fn scan_shell_profiles(entries: &mut Vec<PersistenceEntry>) {
 
 // ---- Udev rules ----
 
+/// Udev rules directories searched in priority order.
+/// Admin overrides in /etc take precedence over vendor rules in /usr/lib
+/// and runtime rules in /run.
+const UDEV_RULES_DIRS: &[&str] = &[
+	"/etc/udev/rules.d",
+	"/usr/lib/udev/rules.d",
+	"/run/udev/rules.d",
+];
+
 fn scan_udev_rules(entries: &mut Vec<PersistenceEntry>) {
 	let start = entries.len();
-	let dir = "/etc/udev/rules.d";
+	let mut seen_names = std::collections::HashSet::new();
 
-	let Ok(read_dir) = fs::read_dir(dir) else {
-		return;
-	};
-
-	for entry in read_dir.flatten() {
-		let path = entry.path();
-		if !path.is_file() {
+	for dir in UDEV_RULES_DIRS {
+		let Ok(read_dir) = fs::read_dir(dir) else {
 			continue;
-		}
+		};
 
-		let name = entry.file_name().to_string_lossy().to_string();
-		entries.push(PersistenceEntry {
-			persistence_type: PersistenceType::UdevRule,
-			name,
-			location: path.to_string_lossy().to_string(),
-			value: String::new(),
-			enabled: true,
-			description: None,
-		});
+		for entry in read_dir.flatten() {
+			let path = entry.path();
+			if !path.is_file() {
+				continue;
+			}
+
+			let name = entry.file_name().to_string_lossy().to_string();
+
+			// Skip duplicates -- higher-priority dirs are scanned first
+			if !seen_names.insert(name.clone()) {
+				continue;
+			}
+
+			entries.push(PersistenceEntry {
+				persistence_type: PersistenceType::UdevRule,
+				name,
+				location: path.to_string_lossy().to_string(),
+				value: String::new(),
+				enabled: true,
+				description: None,
+			});
+		}
 	}
 
 	let max = start + MAX_PER_SOURCE;

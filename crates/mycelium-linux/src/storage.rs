@@ -4,6 +4,9 @@ use mycelium_core::error::Result;
 use mycelium_core::types::*;
 use std::fs;
 
+/// Standard sector size in bytes used by /proc/diskstats and /sys/block/*/size.
+const SECTOR_SIZE: u64 = 512;
+
 fn read_block_attr(device: &str, attr: &str) -> Option<String> {
 	fs::read_to_string(format!("/sys/block/{device}/{attr}"))
 		.ok()
@@ -42,7 +45,7 @@ pub fn list_disks() -> Result<Vec<DiskInfo>> {
 			name,
 			model,
 			serial,
-			size_bytes: size_sectors * 512,
+			size_bytes: size_sectors * SECTOR_SIZE,
 			removable,
 			rotational,
 		});
@@ -204,13 +207,12 @@ pub fn io_stats() -> Result<Vec<IoStats>> {
 
 		let parse = |idx: usize| -> u64 { fields[idx].parse().unwrap_or(0) };
 
-		// Sector size is 512 bytes for /proc/diskstats
 		stats.push(IoStats {
 			device,
 			reads_completed: parse(3),
 			writes_completed: parse(7),
-			read_bytes: parse(5) * 512,  // sectors read * 512
-			write_bytes: parse(9) * 512, // sectors written * 512
+			read_bytes: parse(5) * SECTOR_SIZE,
+			write_bytes: parse(9) * SECTOR_SIZE,
 			io_in_progress: parse(11),
 			io_time_ms: parse(12),
 		});

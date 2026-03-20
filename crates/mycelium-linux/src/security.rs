@@ -218,8 +218,16 @@ fn check_firewall_active() -> bool {
 		&& output.status.success()
 	{
 		let stdout = String::from_utf8_lossy(&output.stdout);
-		// Check if there are any rules beyond default empty chains
-		return stdout.lines().count() > 8;
+		// Default iptables output with 3 empty built-in chains (INPUT, FORWARD,
+		// OUTPUT) produces exactly 2 lines each (header + policy) = 6 lines.
+		// Custom chains add 2 more lines each, so count non-empty, non-header
+		// lines to detect actual rules rather than relying on a fragile total.
+		return stdout.lines().any(|line| {
+			let trimmed = line.trim();
+			!trimmed.is_empty()
+				&& !trimmed.starts_with("Chain ")
+				&& !trimmed.starts_with("target")
+		});
 	}
 
 	false
