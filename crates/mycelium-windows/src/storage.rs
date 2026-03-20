@@ -65,7 +65,10 @@ fn get_disk_drive_info() -> HashMap<String, (Option<String>, Option<String>)> {
 		if let Some(ref id) = d.DeviceID {
 			drive_info.insert(
 				id.clone(),
-				(d.Model.clone(), d.SerialNumber.as_ref().map(|s| s.trim().to_string())),
+				(
+					d.Model.clone(),
+					d.SerialNumber.as_ref().map(|s| s.trim().to_string()),
+				),
 			);
 		}
 	}
@@ -121,10 +124,7 @@ pub fn list_disks() -> Result<Vec<DiskInfo>> {
 		// Look up model/serial by mount point (e.g. "C:\\" → "C:")
 		let mount = disk.mount_point().to_string_lossy();
 		let mount_key = mount.trim_end_matches('\\').to_string();
-		let (model, serial) = drive_info
-			.get(&mount_key)
-			.cloned()
-			.unwrap_or((None, None));
+		let (model, serial) = drive_info.get(&mount_key).cloned().unwrap_or((None, None));
 
 		result.push(DiskInfo {
 			name,
@@ -180,11 +180,12 @@ pub fn list_partitions() -> Result<Vec<Partition>> {
 
 	// Query logical disks for filesystem, label, serial
 	let logical_disks: Vec<WmiLogicalDisk> = wmi
-		.raw_query("SELECT DeviceID, FileSystem, VolumeName, VolumeSerialNumber FROM Win32_LogicalDisk")
+		.raw_query(
+			"SELECT DeviceID, FileSystem, VolumeName, VolumeSerialNumber FROM Win32_LogicalDisk",
+		)
 		.unwrap_or_default();
 
-	let mut logical_map: HashMap<String, LogicalDiskInfo> =
-		HashMap::new();
+	let mut logical_map: HashMap<String, LogicalDiskInfo> = HashMap::new();
 	for ld in &logical_disks {
 		if let Some(ref dev) = ld.DeviceID {
 			logical_map.insert(
@@ -204,8 +205,7 @@ pub fn list_partitions() -> Result<Vec<Partition>> {
 		.raw_query("SELECT Antecedent, Dependent FROM Win32_LogicalDiskToPartition")
 		.unwrap_or_default();
 
-	let mut part_info: HashMap<String, LogicalDiskInfo> =
-		HashMap::new();
+	let mut part_info: HashMap<String, LogicalDiskInfo> = HashMap::new();
 	for assoc in &l2p {
 		if let (Some(ante), Some(dep)) = (&assoc.Antecedent, &assoc.Dependent)
 			&& let Some(part_id) = extract_wmi_key(ante, "DeviceID")
@@ -346,7 +346,10 @@ mod tests {
 	#[test]
 	fn test_extract_wmi_key_drive_letter() {
 		let reference = r#"\\DESKTOP\root\cimv2:Win32_LogicalDisk.DeviceID="C:""#;
-		assert_eq!(extract_wmi_key(reference, "DeviceID"), Some("C:".to_string()));
+		assert_eq!(
+			extract_wmi_key(reference, "DeviceID"),
+			Some("C:".to_string())
+		);
 	}
 
 	#[test]

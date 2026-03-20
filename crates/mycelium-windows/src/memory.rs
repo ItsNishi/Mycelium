@@ -6,15 +6,14 @@ use sysinfo::{Pid, ProcessesToUpdate, System};
 use windows::Win32::Foundation::{CloseHandle, HANDLE};
 use windows::Win32::System::Diagnostics::Debug::{ReadProcessMemory, WriteProcessMemory};
 use windows::Win32::System::Memory::{
-	VirtualProtectEx, VirtualQueryEx, MEMORY_BASIC_INFORMATION, MEM_COMMIT, MEM_IMAGE,
-	MEM_MAPPED, MEM_PRIVATE, PAGE_EXECUTE, PAGE_EXECUTE_READ, PAGE_EXECUTE_READWRITE,
-	PAGE_EXECUTE_WRITECOPY, PAGE_GUARD, PAGE_NOACCESS, PAGE_PROTECTION_FLAGS, PAGE_READONLY,
-	PAGE_READWRITE, PAGE_WRITECOPY,
+	MEM_COMMIT, MEM_IMAGE, MEM_MAPPED, MEM_PRIVATE, MEMORY_BASIC_INFORMATION, PAGE_EXECUTE,
+	PAGE_EXECUTE_READ, PAGE_EXECUTE_READWRITE, PAGE_EXECUTE_WRITECOPY, PAGE_GUARD, PAGE_NOACCESS,
+	PAGE_PROTECTION_FLAGS, PAGE_READONLY, PAGE_READWRITE, PAGE_WRITECOPY, VirtualProtectEx,
+	VirtualQueryEx,
 };
 use windows::Win32::System::ProcessStatus::GetMappedFileNameW;
 use windows::Win32::System::Threading::{
-	OpenProcess, PROCESS_QUERY_INFORMATION, PROCESS_VM_OPERATION, PROCESS_VM_READ,
-	PROCESS_VM_WRITE,
+	OpenProcess, PROCESS_QUERY_INFORMATION, PROCESS_VM_OPERATION, PROCESS_VM_READ, PROCESS_VM_WRITE,
 };
 
 use mycelium_core::error::{MyceliumError, Result};
@@ -210,10 +209,8 @@ fn protection_to_string(protect: PAGE_PROTECTION_FLAGS) -> String {
 pub fn process_memory_maps(pid: u32) -> Result<Vec<MemoryRegion>> {
 	let _ = crate::privilege::ensure_debug_privilege();
 
-	let handle =
-		SafeHandle::open_process(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, pid).map_err(
-			|e| MyceliumError::PermissionDenied(format!("cannot open process {pid}: {e}")),
-		)?;
+	let handle = SafeHandle::open_process(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, pid)
+		.map_err(|e| MyceliumError::PermissionDenied(format!("cannot open process {pid}: {e}")))?;
 
 	enumerate_regions(handle.raw())
 }
@@ -243,9 +240,8 @@ fn enumerate_regions(handle: HANDLE) -> Result<Vec<MemoryRegion>> {
 			let end = start + mbi.RegionSize as u64;
 
 			let mut name_buf = [0u16; 512];
-			let name_len = unsafe {
-				GetMappedFileNameW(handle, address as *const _, &mut name_buf)
-			};
+			let name_len =
+				unsafe { GetMappedFileNameW(handle, address as *const _, &mut name_buf) };
 			let pathname = if name_len > 0 {
 				Some(String::from_utf16_lossy(&name_buf[..name_len as usize]))
 			} else {
@@ -317,10 +313,8 @@ pub fn write_process_memory(pid: u32, address: u64, data: &[u8]) -> Result<usize
 
 	let _ = crate::privilege::ensure_debug_privilege();
 
-	let handle =
-		SafeHandle::open_process(PROCESS_VM_WRITE | PROCESS_VM_OPERATION, pid).map_err(|e| {
-			MyceliumError::PermissionDenied(format!("cannot open process {pid}: {e}"))
-		})?;
+	let handle = SafeHandle::open_process(PROCESS_VM_WRITE | PROCESS_VM_OPERATION, pid)
+		.map_err(|e| MyceliumError::PermissionDenied(format!("cannot open process {pid}: {e}")))?;
 
 	let mut bytes_written: usize = 0;
 
@@ -424,10 +418,7 @@ fn pattern_to_bytes(pattern: &SearchPattern) -> Vec<u8> {
 	match pattern {
 		SearchPattern::Bytes(v) => v.clone(),
 		SearchPattern::Utf8(s) => s.as_bytes().to_vec(),
-		SearchPattern::Utf16(s) => s
-			.encode_utf16()
-			.flat_map(|c| c.to_le_bytes())
-			.collect(),
+		SearchPattern::Utf16(s) => s.encode_utf16().flat_map(|c| c.to_le_bytes()).collect(),
 	}
 }
 
@@ -511,10 +502,8 @@ pub fn search_process_memory(
 
 	let _ = crate::privilege::ensure_debug_privilege();
 
-	let handle =
-		SafeHandle::open_process(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, pid).map_err(
-			|e| MyceliumError::PermissionDenied(format!("cannot open process {pid}: {e}")),
-		)?;
+	let handle = SafeHandle::open_process(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, pid)
+		.map_err(|e| MyceliumError::PermissionDenied(format!("cannot open process {pid}: {e}")))?;
 
 	let mut matches = Vec::new();
 	let mut address: usize = 0;
@@ -558,9 +547,8 @@ pub fn search_process_memory(
 			// Get region metadata for match results
 			let perms = protection_to_string(mbi.Protect);
 			let mut name_buf = [0u16; 512];
-			let name_len = unsafe {
-				GetMappedFileNameW(handle.raw(), address as *const _, &mut name_buf)
-			};
+			let name_len =
+				unsafe { GetMappedFileNameW(handle.raw(), address as *const _, &mut name_buf) };
 			let pathname = if name_len > 0 {
 				Some(String::from_utf16_lossy(&name_buf[..name_len as usize]))
 			} else {
@@ -568,7 +556,11 @@ pub fn search_process_memory(
 			};
 
 			// Read the region in chunks with overlap for cross-boundary matches
-			let overlap = if needle.len() > 1 { needle.len() - 1 } else { 0 };
+			let overlap = if needle.len() > 1 {
+				needle.len() - 1
+			} else {
+				0
+			};
 			let mut chunk_offset: usize = 0;
 
 			while chunk_offset < region_size && matches.len() < max_matches {
@@ -608,9 +600,8 @@ pub fn search_process_memory(
 					let ctx_bytes = if context_size > 0 {
 						let half = context_size / 2;
 						let ctx_start = abs_address.saturating_sub(half as u64);
-						let ctx_len = context_size.min(
-							(region_start + region_size as u64 - ctx_start) as usize,
-						);
+						let ctx_len = context_size
+							.min((region_start + region_size as u64 - ctx_start) as usize);
 						let mut ctx_buf = vec![0u8; ctx_len];
 						let mut ctx_read: usize = 0;
 						let _ = unsafe {
@@ -684,7 +675,10 @@ mod tests {
 
 	#[test]
 	fn test_parse_protection_execute_readwrite() {
-		assert_eq!(parse_protection_string("rwx").unwrap(), PAGE_EXECUTE_READWRITE);
+		assert_eq!(
+			parse_protection_string("rwx").unwrap(),
+			PAGE_EXECUTE_READWRITE
+		);
 	}
 
 	#[test]

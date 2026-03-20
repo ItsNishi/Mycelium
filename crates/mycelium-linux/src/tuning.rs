@@ -92,9 +92,7 @@ pub fn list_tunables(prefix: &str) -> Result<Vec<TunableParam>> {
 	};
 
 	if !base_path.exists() {
-		return Err(MyceliumError::NotFound(format!(
-			"tunable prefix {prefix}"
-		)));
+		return Err(MyceliumError::NotFound(format!("tunable prefix {prefix}")));
 	}
 
 	let mut params = Vec::new();

@@ -5,8 +5,8 @@
 //! - `net.ipv6.*` -> `HKLM\SYSTEM\CurrentControlSet\Services\Tcpip6\Parameters`
 //! - `kernel.*`   -> `HKLM\SYSTEM\CurrentControlSet\Control\Session Manager`
 
-use winreg::enums::{HKEY_LOCAL_MACHINE, KEY_READ, KEY_SET_VALUE};
 use winreg::RegKey;
+use winreg::enums::{HKEY_LOCAL_MACHINE, KEY_READ, KEY_SET_VALUE};
 
 use mycelium_core::error::{MyceliumError, Result};
 use mycelium_core::types::{TunableParam, TunableValue};
@@ -45,18 +45,12 @@ const TUNABLE_MAPPINGS: &[(&str, &str)] = &[
 		"kernel.crash",
 		r"SYSTEM\CurrentControlSet\Control\CrashControl",
 	),
-	(
-		"kernel.power",
-		r"SYSTEM\CurrentControlSet\Control\Power",
-	),
+	("kernel.power", r"SYSTEM\CurrentControlSet\Control\Power"),
 	(
 		"kernel.filesystem",
 		r"SYSTEM\CurrentControlSet\Control\FileSystem",
 	),
-	(
-		"kernel.lsa",
-		r"SYSTEM\CurrentControlSet\Control\Lsa",
-	),
+	("kernel.lsa", r"SYSTEM\CurrentControlSet\Control\Lsa"),
 ];
 
 /// Resolve a sysctl-style key to (registry_path, value_name).
@@ -94,9 +88,8 @@ fn resolve_key(key: &str) -> Result<(&str, String)> {
 		}
 	}
 
-	let (prefix, reg_path) = best_match.ok_or_else(|| {
-		MyceliumError::NotFound(format!("no registry mapping for key: {key}"))
-	})?;
+	let (prefix, reg_path) = best_match
+		.ok_or_else(|| MyceliumError::NotFound(format!("no registry mapping for key: {key}")))?;
 
 	// The value name is everything after the prefix (strip leading dot)
 	let value_name = key[prefix.len()..].trim_start_matches('.').to_string();
@@ -113,9 +106,9 @@ pub fn get_tunable(key: &str) -> Result<TunableValue> {
 	let (reg_path, value_name) = resolve_key(key)?;
 
 	let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
-	let subkey = hklm.open_subkey_with_flags(reg_path, KEY_READ).map_err(|e| {
-		MyceliumError::NotFound(format!("registry key {reg_path}: {e}"))
-	})?;
+	let subkey = hklm
+		.open_subkey_with_flags(reg_path, KEY_READ)
+		.map_err(|e| MyceliumError::NotFound(format!("registry key {reg_path}: {e}")))?;
 
 	// Try DWORD first, then string
 	if let Ok(v) = subkey.get_value::<u32, _>(&value_name) {
@@ -155,8 +148,7 @@ fn enumerate_registry_key(reg_path: &str, key_prefix: &str, tunables: &mut Vec<T
 					continue;
 				}
 			}
-			winreg::enums::RegType::REG_SZ
-			| winreg::enums::RegType::REG_EXPAND_SZ => {
+			winreg::enums::RegType::REG_SZ | winreg::enums::RegType::REG_EXPAND_SZ => {
 				let s = String::from_utf16_lossy(
 					&value_name
 						.1
@@ -209,9 +201,7 @@ pub fn set_tunable(key: &str, value: &TunableValue) -> Result<TunableValue> {
 	let subkey = hklm
 		.open_subkey_with_flags(reg_path, KEY_SET_VALUE)
 		.map_err(|e| {
-			MyceliumError::PermissionDenied(format!(
-				"cannot open {reg_path} for writing: {e}"
-			))
+			MyceliumError::PermissionDenied(format!("cannot open {reg_path} for writing: {e}"))
 		})?;
 
 	match value {
@@ -273,10 +263,7 @@ mod tests {
 	#[test]
 	fn test_resolve_key_kernel_base() {
 		let (path, value) = resolve_key("kernel.GlobalFlag").unwrap();
-		assert_eq!(
-			path,
-			r"SYSTEM\CurrentControlSet\Control\Session Manager"
-		);
+		assert_eq!(path, r"SYSTEM\CurrentControlSet\Control\Session Manager");
 		assert_eq!(value, "GlobalFlag");
 	}
 
@@ -326,7 +313,8 @@ mod tests {
 
 	#[test]
 	fn test_resolve_key_registry_prefix() {
-		let (path, value) = resolve_key(r"registry.SYSTEM\CurrentControlSet\Control\Lsa.RunAsPPL").unwrap();
+		let (path, value) =
+			resolve_key(r"registry.SYSTEM\CurrentControlSet\Control\Lsa.RunAsPPL").unwrap();
 		assert_eq!(path, r"SYSTEM\CurrentControlSet\Control\Lsa");
 		assert_eq!(value, "RunAsPPL");
 	}

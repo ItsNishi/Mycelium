@@ -92,10 +92,7 @@ pub fn cpu_info() -> Result<CpuInfo> {
 			}
 		} else if let Some(val) = line.strip_prefix("cache size\t: ") {
 			if cache_size_kb == 0 {
-				cache_size_kb = val
-					.trim_end_matches(" KB")
-					.parse()
-					.unwrap_or(0);
+				cache_size_kb = val.trim_end_matches(" KB").parse().unwrap_or(0);
 			}
 		} else if line.starts_with("processor\t: ") {
 			logical_count += 1;

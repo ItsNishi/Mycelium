@@ -66,4 +66,3 @@ impl From<std::io::Error> for MyceliumError {
 		Self::IoError(err)
 	}
 }
-

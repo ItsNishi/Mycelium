@@ -97,7 +97,9 @@ impl MyceliumMcpService {
 		process::handle_handles(self, req).await
 	}
 
-	#[tool(description = "Parse PE headers of a process or file. Returns imports, exports, sections, characteristics.")]
+	#[tool(
+		description = "Parse PE headers of a process or file. Returns imports, exports, sections, characteristics."
+	)]
 	async fn process_pe_inspect(
 		&self,
 		Parameters(req): Parameters<process::PeInspectRequest>,
@@ -105,7 +107,9 @@ impl MyceliumMcpService {
 		process::handle_pe_inspect(self, req).await
 	}
 
-	#[tool(description = "Inspect process token security details (integrity, groups, elevation, impersonation)")]
+	#[tool(
+		description = "Inspect process token security details (integrity, groups, elevation, impersonation)"
+	)]
 	async fn process_token(
 		&self,
 		Parameters(req): Parameters<process::PidRequest>,
@@ -328,12 +332,16 @@ impl MyceliumMcpService {
 		security::handle_status(self).await
 	}
 
-	#[tool(description = "Scan persistence mechanisms (Linux: cron, systemd timers, init scripts, XDG autostart, shell profiles, udev; Windows: registry, services, tasks, startup, WMI, COM)")]
+	#[tool(
+		description = "Scan persistence mechanisms (Linux: cron, systemd timers, init scripts, XDG autostart, shell profiles, udev; Windows: registry, services, tasks, startup, WMI, COM)"
+	)]
 	async fn security_persistence(&self) -> Result<CallToolResult, McpError> {
 		security::handle_persistence(self).await
 	}
 
-	#[tool(description = "Detect hooks in a process (Linux: LD_PRELOAD, suspicious libraries, ptrace; Windows: inline, IAT, EAT)")]
+	#[tool(
+		description = "Detect hooks in a process (Linux: LD_PRELOAD, suspicious libraries, ptrace; Windows: inline, IAT, EAT)"
+	)]
 	async fn security_detect_hooks(
 		&self,
 		Parameters(req): Parameters<security::DetectHooksRequest>,
@@ -343,7 +351,9 @@ impl MyceliumMcpService {
 
 	// -- Probes --
 
-	#[tool(description = "Attach an eBPF probe (syscall-trace or network-monitor). Requires CAP_BPF/root.")]
+	#[tool(
+		description = "Attach an eBPF probe (syscall-trace or network-monitor). Requires CAP_BPF/root."
+	)]
 	async fn probe_attach(
 		&self,
 		Parameters(req): Parameters<probe::AttachRequest>,

@@ -3,7 +3,7 @@
 use std::sync::mpsc;
 use std::time::Duration;
 
-use windows::Win32::Foundation::{CloseHandle, HANDLE, DUPLICATE_SAME_ACCESS};
+use windows::Win32::Foundation::{CloseHandle, DUPLICATE_SAME_ACCESS, HANDLE};
 use windows::Win32::System::Threading::{GetCurrentProcess, OpenProcess, PROCESS_DUP_HANDLE};
 
 use mycelium_core::error::{MyceliumError, Result};
@@ -245,9 +245,8 @@ pub(crate) fn list_process_handles(pid: u32) -> Result<Vec<HandleInfo>> {
 	// -----------------------------------------------------------------
 	// 3. Open the target process for handle duplication
 	// -----------------------------------------------------------------
-	let target_process = unsafe { OpenProcess(PROCESS_DUP_HANDLE, false, pid) }.map_err(|e| {
-		MyceliumError::PermissionDenied(format!("cannot open process {pid}: {e}"))
-	})?;
+	let target_process = unsafe { OpenProcess(PROCESS_DUP_HANDLE, false, pid) }
+		.map_err(|e| MyceliumError::PermissionDenied(format!("cannot open process {pid}: {e}")))?;
 	let target_process = SafeHandle(target_process);
 	let current_process = unsafe { GetCurrentProcess() };
 
@@ -391,7 +390,8 @@ fn parse_handle_entries(buffer: &[u8], target_pid: u16) -> Vec<SystemHandleTable
 	let max_entries = (buffer.len() - entries_offset) / entry_size;
 	let safe_count = count.min(max_entries);
 
-	let entries_ptr = unsafe { buffer.as_ptr().add(entries_offset) } as *const SystemHandleTableEntryInfo;
+	let entries_ptr =
+		unsafe { buffer.as_ptr().add(entries_offset) } as *const SystemHandleTableEntryInfo;
 
 	let mut result = Vec::new();
 

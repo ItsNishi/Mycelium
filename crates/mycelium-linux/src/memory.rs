@@ -2,8 +2,8 @@
 
 use mycelium_core::error::{MyceliumError, Result};
 use mycelium_core::types::{
-	MemoryInfo, MemoryMatch, MemoryRegion, MemorySearchOptions, ProcessMemory,
-	SearchPattern, SwapInfo,
+	MemoryInfo, MemoryMatch, MemoryRegion, MemorySearchOptions, ProcessMemory, SearchPattern,
+	SwapInfo,
 };
 use std::fs;
 use std::io::{Read as _, Seek, SeekFrom, Write as _};
@@ -160,17 +160,18 @@ pub fn read_process_memory(pid: u32, address: u64, size: usize) -> Result<Vec<u8
 	}
 
 	let mut file = fs::File::open(&mem_path).map_err(|e| match e.kind() {
-		std::io::ErrorKind::PermissionDenied => {
-			MyceliumError::PermissionDenied(format!("cannot read {mem_path} (requires ptrace or root)"))
-		}
+		std::io::ErrorKind::PermissionDenied => MyceliumError::PermissionDenied(format!(
+			"cannot read {mem_path} (requires ptrace or root)"
+		)),
 		std::io::ErrorKind::NotFound => MyceliumError::NotFound(format!("process {pid}")),
 		_ => MyceliumError::IoError(e),
 	})?;
 
-	file.seek(SeekFrom::Start(address)).map_err(|e| MyceliumError::OsError {
-		code: e.raw_os_error().unwrap_or(0),
-		message: format!("failed to seek to address {address:#x}: {e}"),
-	})?;
+	file.seek(SeekFrom::Start(address))
+		.map_err(|e| MyceliumError::OsError {
+			code: e.raw_os_error().unwrap_or(0),
+			message: format!("failed to seek to address {address:#x}: {e}"),
+		})?;
 
 	let mut buf = vec![0u8; size];
 	file.read_exact(&mut buf).map_err(|e| {
@@ -219,19 +220,18 @@ pub fn write_process_memory(pid: u32, address: u64, data: &[u8]) -> Result<usize
 		.write(true)
 		.open(&mem_path)
 		.map_err(|e| match e.kind() {
-			std::io::ErrorKind::PermissionDenied => {
-				MyceliumError::PermissionDenied(format!(
-					"cannot write {mem_path} (requires ptrace or root)"
-				))
-			}
+			std::io::ErrorKind::PermissionDenied => MyceliumError::PermissionDenied(format!(
+				"cannot write {mem_path} (requires ptrace or root)"
+			)),
 			std::io::ErrorKind::NotFound => MyceliumError::NotFound(format!("process {pid}")),
 			_ => MyceliumError::IoError(e),
 		})?;
 
-	file.seek(SeekFrom::Start(address)).map_err(|e| MyceliumError::OsError {
-		code: e.raw_os_error().unwrap_or(0),
-		message: format!("failed to seek to address {address:#x}: {e}"),
-	})?;
+	file.seek(SeekFrom::Start(address))
+		.map_err(|e| MyceliumError::OsError {
+			code: e.raw_os_error().unwrap_or(0),
+			message: format!("failed to seek to address {address:#x}: {e}"),
+		})?;
 
 	file.write_all(data).map_err(|e| {
 		let code = e.raw_os_error().unwrap_or(0);
@@ -272,10 +272,7 @@ fn pattern_to_bytes(pattern: &SearchPattern) -> Vec<u8> {
 	match pattern {
 		SearchPattern::Bytes(b) => b.clone(),
 		SearchPattern::Utf8(s) => s.as_bytes().to_vec(),
-		SearchPattern::Utf16(s) => s
-			.encode_utf16()
-			.flat_map(|c| c.to_le_bytes())
-			.collect(),
+		SearchPattern::Utf16(s) => s.encode_utf16().flat_map(|c| c.to_le_bytes()).collect(),
 	}
 }
 
@@ -288,7 +285,10 @@ fn find_all_occurrences(haystack: &[u8], needle: &[u8]) -> Vec<usize> {
 	let mut positions = Vec::new();
 	let mut start = 0;
 	while start + needle.len() <= haystack.len() {
-		if let Some(pos) = haystack[start..].windows(needle.len()).position(|w| w == needle) {
+		if let Some(pos) = haystack[start..]
+			.windows(needle.len())
+			.position(|w| w == needle)
+		{
 			positions.push(start + pos);
 			start += pos + 1;
 		} else {
@@ -329,11 +329,9 @@ pub fn search_process_memory(
 
 	let mem_path = format!("/proc/{pid}/mem");
 	let mut file = fs::File::open(&mem_path).map_err(|e| match e.kind() {
-		std::io::ErrorKind::PermissionDenied => {
-			MyceliumError::PermissionDenied(format!(
-				"cannot read {mem_path} (requires ptrace or root)"
-			))
-		}
+		std::io::ErrorKind::PermissionDenied => MyceliumError::PermissionDenied(format!(
+			"cannot read {mem_path} (requires ptrace or root)"
+		)),
 		std::io::ErrorKind::NotFound => MyceliumError::NotFound(format!("process {pid}")),
 		_ => MyceliumError::IoError(e),
 	})?;

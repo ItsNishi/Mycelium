@@ -42,7 +42,9 @@ fn read_write_process_memory() {
 
 	// Write a known pattern and read it back.
 	let pattern = [0xDE, 0xAD, 0xBE, 0xEF, 0xCA, 0xFE, 0xBA, 0xBE];
-	let written = platform().write_process_memory(pid, addr, &pattern).unwrap();
+	let written = platform()
+		.write_process_memory(pid, addr, &pattern)
+		.unwrap();
 	assert_eq!(written, 8);
 
 	let readback = platform().read_process_memory(pid, addr, 8).unwrap();
@@ -119,9 +121,9 @@ fn firewall_add_remove() {
 
 	// List and verify it's there.
 	let rules = platform().list_firewall_rules().unwrap();
-	let found = rules.iter().any(|r| {
-		r.comment.as_deref() == Some("mycelium-test") || r.port == Some(59999)
-	});
+	let found = rules
+		.iter()
+		.any(|r| r.comment.as_deref() == Some("mycelium-test") || r.port == Some(59999));
 	assert!(found, "added firewall rule should be listed");
 
 	// Remove by finding the ID.
@@ -134,8 +136,11 @@ fn firewall_add_remove() {
 
 	// Verify removal.
 	let rules_after = platform().list_firewall_rules().unwrap();
-	let still_found = rules_after.iter().any(|r| {
-		r.comment.as_deref() == Some("mycelium-test") || r.port == Some(59999)
-	});
-	assert!(!still_found, "removed firewall rule should no longer be listed");
+	let still_found = rules_after
+		.iter()
+		.any(|r| r.comment.as_deref() == Some("mycelium-test") || r.port == Some(59999));
+	assert!(
+		!still_found,
+		"removed firewall rule should no longer be listed"
+	);
 }

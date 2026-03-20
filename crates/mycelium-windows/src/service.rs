@@ -4,16 +4,15 @@ use std::mem::size_of;
 use std::process::Command;
 use std::time::Instant;
 
-use wmi::{COMLibrary, WMIConnection};
-use windows::core::PCWSTR;
 use windows::Win32::System::Services::{
-	ChangeServiceConfigW, CloseServiceHandle, ControlService, OpenSCManagerW,
-	OpenServiceW, QueryServiceStatusEx, StartServiceW, ENUM_SERVICE_TYPE,
-	SC_HANDLE, SC_MANAGER_CONNECT, SC_STATUS_PROCESS_INFO, SERVICE_AUTO_START,
-	SERVICE_CHANGE_CONFIG, SERVICE_CONTROL_STOP, SERVICE_DISABLED, SERVICE_ERROR,
-	SERVICE_NO_CHANGE, SERVICE_QUERY_STATUS, SERVICE_START, SERVICE_STATUS,
-	SERVICE_STATUS_PROCESS, SERVICE_STOP, SERVICE_STOPPED,
+	ChangeServiceConfigW, CloseServiceHandle, ControlService, ENUM_SERVICE_TYPE, OpenSCManagerW,
+	OpenServiceW, QueryServiceStatusEx, SC_HANDLE, SC_MANAGER_CONNECT, SC_STATUS_PROCESS_INFO,
+	SERVICE_AUTO_START, SERVICE_CHANGE_CONFIG, SERVICE_CONTROL_STOP, SERVICE_DISABLED,
+	SERVICE_ERROR, SERVICE_NO_CHANGE, SERVICE_QUERY_STATUS, SERVICE_START, SERVICE_STATUS,
+	SERVICE_STATUS_PROCESS, SERVICE_STOP, SERVICE_STOPPED, StartServiceW,
 };
+use windows::core::PCWSTR;
+use wmi::{COMLibrary, WMIConnection};
 
 use mycelium_core::error::{MyceliumError, Result};
 use mycelium_core::types::{
@@ -47,21 +46,24 @@ impl ScHandle {
 
 /// Open a connection to the local Service Control Manager.
 fn open_scm() -> Result<ScHandle> {
-	let handle = unsafe { OpenSCManagerW(None, None, SC_MANAGER_CONNECT) }
-		.map_err(|e| MyceliumError::OsError {
+	let handle = unsafe { OpenSCManagerW(None, None, SC_MANAGER_CONNECT) }.map_err(|e| {
+		MyceliumError::OsError {
 			code: e.code().0,
 			message: format!("OpenSCManagerW failed: {e}"),
-		})?;
+		}
+	})?;
 	Ok(ScHandle(handle))
 }
 
 /// Open a named service with the requested access mask.
 fn open_service(scm: &ScHandle, name: &str, access: u32) -> Result<ScHandle> {
 	let wide: Vec<u16> = name.encode_utf16().chain(std::iter::once(0)).collect();
-	let handle = unsafe { OpenServiceW(scm.raw(), PCWSTR(wide.as_ptr()), access) }
-		.map_err(|e| MyceliumError::OsError {
-			code: e.code().0,
-			message: format!("OpenServiceW({name:?}) failed: {e}"),
+	let handle =
+		unsafe { OpenServiceW(scm.raw(), PCWSTR(wide.as_ptr()), access) }.map_err(|e| {
+			MyceliumError::OsError {
+				code: e.code().0,
+				message: format!("OpenServiceW({name:?}) failed: {e}"),
+			}
 		})?;
 	Ok(ScHandle(handle))
 }
@@ -230,11 +232,9 @@ pub fn service_status(name: &str) -> Result<ServiceInfo> {
 		name.replace('\'', "''")
 	);
 
-	let results: Vec<WmiService> = wmi.raw_query(&query).map_err(|e| {
-		MyceliumError::OsError {
-			code: -1,
-			message: format!("WMI service query failed: {e}"),
-		}
+	let results: Vec<WmiService> = wmi.raw_query(&query).map_err(|e| MyceliumError::OsError {
+		code: -1,
+		message: format!("WMI service query failed: {e}"),
 	})?;
 
 	let mut info = results
@@ -256,11 +256,9 @@ pub fn service_action(name: &str, action: ServiceAction) -> Result<()> {
 		ServiceAction::Start => {
 			let scm = open_scm()?;
 			let svc = open_service(&scm, name, SERVICE_START)?;
-			unsafe { StartServiceW(svc.raw(), None) }.map_err(|e| {
-				MyceliumError::OsError {
-					code: e.code().0,
-					message: format!("StartServiceW({name:?}) failed: {e}"),
-				}
+			unsafe { StartServiceW(svc.raw(), None) }.map_err(|e| MyceliumError::OsError {
+				code: e.code().0,
+				message: format!("StartServiceW({name:?}) failed: {e}"),
 			})
 		}
 
@@ -268,11 +266,12 @@ pub fn service_action(name: &str, action: ServiceAction) -> Result<()> {
 			let scm = open_scm()?;
 			let svc = open_service(&scm, name, SERVICE_STOP | SERVICE_QUERY_STATUS)?;
 			let mut status = SERVICE_STATUS::default();
-			unsafe { ControlService(svc.raw(), SERVICE_CONTROL_STOP, &mut status) }
-				.map_err(|e| MyceliumError::OsError {
+			unsafe { ControlService(svc.raw(), SERVICE_CONTROL_STOP, &mut status) }.map_err(|e| {
+				MyceliumError::OsError {
 					code: e.code().0,
 					message: format!("ControlService(STOP, {name:?}) failed: {e}"),
-				})
+				}
+			})
 		}
 
 		ServiceAction::Restart => {
@@ -286,11 +285,9 @@ pub fn service_action(name: &str, action: ServiceAction) -> Result<()> {
 			let mut status = SERVICE_STATUS::default();
 			let _ = unsafe { ControlService(svc.raw(), SERVICE_CONTROL_STOP, &mut status) };
 			wait_for_stopped(&svc)?;
-			unsafe { StartServiceW(svc.raw(), None) }.map_err(|e| {
-				MyceliumError::OsError {
-					code: e.code().0,
-					message: format!("StartServiceW({name:?}) failed: {e}"),
-				}
+			unsafe { StartServiceW(svc.raw(), None) }.map_err(|e| MyceliumError::OsError {
+				code: e.code().0,
+				message: format!("StartServiceW({name:?}) failed: {e}"),
 			})
 		}
 
@@ -350,10 +347,7 @@ pub fn service_action(name: &str, action: ServiceAction) -> Result<()> {
 
 pub fn read_logs(query: &LogQuery) -> Result<Vec<LogEntry>> {
 	// Use wevtutil to query Windows Event Log
-	let log_name = query
-		.unit
-		.as_deref()
-		.unwrap_or("System");
+	let log_name = query.unit.as_deref().unwrap_or("System");
 
 	let count = query.limit.unwrap_or(100);
 
@@ -365,13 +359,14 @@ pub fn read_logs(query: &LogQuery) -> Result<Vec<LogEntry>> {
 		"/f:text".to_string(),
 	];
 
-	let output = Command::new("wevtutil")
-		.args(&args)
-		.output()
-		.map_err(|e| MyceliumError::OsError {
-			code: e.raw_os_error().unwrap_or(-1),
-			message: format!("failed to run wevtutil: {e}"),
-		})?;
+	let output =
+		Command::new("wevtutil")
+			.args(&args)
+			.output()
+			.map_err(|e| MyceliumError::OsError {
+				code: e.raw_os_error().unwrap_or(-1),
+				message: format!("failed to run wevtutil: {e}"),
+			})?;
 
 	if !output.status.success() {
 		let stderr = String::from_utf8_lossy(&output.stderr);
@@ -404,9 +399,7 @@ fn parse_wevtutil_text(text: &str, query: &LogQuery) -> Vec<LogEntry> {
 				let entry = LogEntry {
 					timestamp: current_timestamp,
 					level: current_level,
-					unit: Some(
-						query.unit.as_deref().unwrap_or("System").to_string(),
-					),
+					unit: Some(query.unit.as_deref().unwrap_or("System").to_string()),
 					message: current_message.trim().to_string(),
 					pid: current_pid,
 					source: current_source.take(),
@@ -466,9 +459,7 @@ fn parse_wevtutil_text(text: &str, query: &LogQuery) -> Vec<LogEntry> {
 		let entry = LogEntry {
 			timestamp: current_timestamp,
 			level: current_level,
-			unit: Some(
-				query.unit.as_deref().unwrap_or("System").to_string(),
-			),
+			unit: Some(query.unit.as_deref().unwrap_or("System").to_string()),
 			message: current_message.trim().to_string(),
 			pid: current_pid,
 			source: current_source,
@@ -671,28 +662,40 @@ mod tests {
 	#[test]
 	fn test_matches_log_query_since_filters() {
 		let entry = make_entry(500, LogLevel::Info, "old");
-		let query = LogQuery { since: Some(1000), ..empty_query() };
+		let query = LogQuery {
+			since: Some(1000),
+			..empty_query()
+		};
 		assert!(!matches_log_query(&entry, &query));
 	}
 
 	#[test]
 	fn test_matches_log_query_since_passes() {
 		let entry = make_entry(1500, LogLevel::Info, "new");
-		let query = LogQuery { since: Some(1000), ..empty_query() };
+		let query = LogQuery {
+			since: Some(1000),
+			..empty_query()
+		};
 		assert!(matches_log_query(&entry, &query));
 	}
 
 	#[test]
 	fn test_matches_log_query_until_filters() {
 		let entry = make_entry(2000, LogLevel::Info, "future");
-		let query = LogQuery { until: Some(1000), ..empty_query() };
+		let query = LogQuery {
+			until: Some(1000),
+			..empty_query()
+		};
 		assert!(!matches_log_query(&entry, &query));
 	}
 
 	#[test]
 	fn test_matches_log_query_until_passes() {
 		let entry = make_entry(500, LogLevel::Info, "past");
-		let query = LogQuery { until: Some(1000), ..empty_query() };
+		let query = LogQuery {
+			until: Some(1000),
+			..empty_query()
+		};
 		assert!(matches_log_query(&entry, &query));
 	}
 
@@ -700,42 +703,62 @@ mod tests {
 	fn test_matches_log_query_zero_timestamp_not_filtered() {
 		// Entries with timestamp 0 (parse failure) should NOT be filtered by since/until
 		let entry = make_entry(0, LogLevel::Info, "unknown time");
-		let query = LogQuery { since: Some(1000), until: Some(2000), ..empty_query() };
+		let query = LogQuery {
+			since: Some(1000),
+			until: Some(2000),
+			..empty_query()
+		};
 		assert!(matches_log_query(&entry, &query));
 	}
 
 	#[test]
 	fn test_matches_log_query_level_filter() {
 		let entry = make_entry(1000, LogLevel::Debug, "debug msg");
-		let query = LogQuery { level: Some(LogLevel::Warning), ..empty_query() };
+		let query = LogQuery {
+			level: Some(LogLevel::Warning),
+			..empty_query()
+		};
 		assert!(!matches_log_query(&entry, &query));
 	}
 
 	#[test]
 	fn test_matches_log_query_level_passes() {
 		let entry = make_entry(1000, LogLevel::Error, "error msg");
-		let query = LogQuery { level: Some(LogLevel::Warning), ..empty_query() };
+		let query = LogQuery {
+			level: Some(LogLevel::Warning),
+			..empty_query()
+		};
 		assert!(matches_log_query(&entry, &query));
 	}
 
 	#[test]
 	fn test_matches_log_query_grep_matches() {
 		let entry = make_entry(1000, LogLevel::Info, "hello world");
-		let query = LogQuery { grep: Some("world".to_string()), ..empty_query() };
+		let query = LogQuery {
+			grep: Some("world".to_string()),
+			..empty_query()
+		};
 		assert!(matches_log_query(&entry, &query));
 	}
 
 	#[test]
 	fn test_matches_log_query_grep_no_match() {
 		let entry = make_entry(1000, LogLevel::Info, "hello world");
-		let query = LogQuery { grep: Some("missing".to_string()), ..empty_query() };
+		let query = LogQuery {
+			grep: Some("missing".to_string()),
+			..empty_query()
+		};
 		assert!(!matches_log_query(&entry, &query));
 	}
 
 	#[test]
 	fn test_matches_log_query_combined_since_until() {
 		let entry = make_entry(1500, LogLevel::Info, "in range");
-		let query = LogQuery { since: Some(1000), until: Some(2000), ..empty_query() };
+		let query = LogQuery {
+			since: Some(1000),
+			until: Some(2000),
+			..empty_query()
+		};
 		assert!(matches_log_query(&entry, &query));
 	}
 }

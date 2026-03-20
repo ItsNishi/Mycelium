@@ -41,8 +41,8 @@ async fn main() -> anyhow::Result<()> {
 	#[cfg(target_os = "linux")]
 	let linux_platform = Arc::new(mycelium_linux::LinuxPlatform::new());
 	#[cfg(target_os = "linux")]
-	let platform: Arc<dyn mycelium_core::platform::Platform> = Arc::clone(&linux_platform)
-		as Arc<dyn mycelium_core::platform::Platform>;
+	let platform: Arc<dyn mycelium_core::platform::Platform> =
+		Arc::clone(&linux_platform) as Arc<dyn mycelium_core::platform::Platform>;
 
 	#[cfg(target_os = "windows")]
 	let platform: Arc<dyn mycelium_core::platform::Platform> =
@@ -54,9 +54,7 @@ async fn main() -> anyhow::Result<()> {
 	#[cfg(all(target_os = "linux", feature = "ebpf"))]
 	let service = {
 		let svc = MyceliumMcpService::new(platform, policy, audit, args.agent);
-		svc.with_probe_platform(
-			linux_platform as Arc<dyn mycelium_core::platform::ProbePlatform>,
-		)
+		svc.with_probe_platform(linux_platform as Arc<dyn mycelium_core::platform::ProbePlatform>)
 	};
 
 	#[cfg(not(all(target_os = "linux", feature = "ebpf")))]

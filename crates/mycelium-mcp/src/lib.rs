@@ -87,9 +87,7 @@ impl MyceliumMcpService {
 		let decision = effective.evaluate(tool_name, context);
 
 		if !decision.allowed {
-			let reason = decision
-				.reason
-				.unwrap_or_else(|| "policy denied".into());
+			let reason = decision.reason.unwrap_or_else(|| "policy denied".into());
 
 			self.audit.log(&AuditEntry {
 				timestamp: current_timestamp(),
@@ -111,10 +109,7 @@ impl MyceliumMcpService {
 
 	/// Check the rate limiter for a destructive operation.
 	/// Returns Some(result) if rate limited, None if allowed.
-	pub fn check_rate_limit(
-		&self,
-		tool_name: &str,
-	) -> Option<Result<CallToolResult, McpError>> {
+	pub fn check_rate_limit(&self, tool_name: &str) -> Option<Result<CallToolResult, McpError>> {
 		match self.rate_limiter.check(tool_name) {
 			Ok(()) => None,
 			Err(e) => {

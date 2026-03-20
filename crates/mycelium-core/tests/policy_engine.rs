@@ -120,10 +120,7 @@ fn malformed_toml_errors() {
 	let result = parse_policy_toml("this is not [valid toml = {");
 	assert!(result.is_err());
 	let err = result.unwrap_err();
-	assert!(
-		err.contains("TOML"),
-		"error should mention TOML: {err}"
-	);
+	assert!(err.contains("TOML"), "error should mention TOML: {err}");
 }
 
 #[test]

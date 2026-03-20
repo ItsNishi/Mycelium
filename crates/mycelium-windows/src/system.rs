@@ -1,9 +1,9 @@
 //! System information via sysinfo, registry, and WMI.
 
 use sysinfo::System;
-use wmi::{COMLibrary, WMIConnection};
-use winreg::enums::HKEY_LOCAL_MACHINE;
 use winreg::RegKey;
+use winreg::enums::HKEY_LOCAL_MACHINE;
+use wmi::{COMLibrary, WMIConnection};
 
 use mycelium_core::error::{MyceliumError, Result};
 use mycelium_core::types::{CpuInfo, KernelInfo, SystemInfo};
@@ -24,11 +24,21 @@ struct CpuWmiInfo {
 fn get_cpu_wmi_info() -> CpuWmiInfo {
 	let com = match COMLibrary::new() {
 		Ok(c) => c,
-		Err(_) => return CpuWmiInfo { cache_size_kb: 0, current_clock_mhz: None },
+		Err(_) => {
+			return CpuWmiInfo {
+				cache_size_kb: 0,
+				current_clock_mhz: None,
+			};
+		}
 	};
 	let wmi = match WMIConnection::new(com) {
 		Ok(w) => w,
-		Err(_) => return CpuWmiInfo { cache_size_kb: 0, current_clock_mhz: None },
+		Err(_) => {
+			return CpuWmiInfo {
+				cache_size_kb: 0,
+				current_clock_mhz: None,
+			};
+		}
 	};
 	let results: Vec<WmiProcessor> = wmi
 		.raw_query("SELECT L2CacheSize, L3CacheSize, CurrentClockSpeed FROM Win32_Processor")
@@ -40,7 +50,10 @@ fn get_cpu_wmi_info() -> CpuWmiInfo {
 			cache_size_kb: p.L2CacheSize.unwrap_or(0) as u64 + p.L3CacheSize.unwrap_or(0) as u64,
 			current_clock_mhz: p.CurrentClockSpeed.map(|v| v as f64),
 		})
-		.unwrap_or(CpuWmiInfo { cache_size_kb: 0, current_clock_mhz: None })
+		.unwrap_or(CpuWmiInfo {
+			cache_size_kb: 0,
+			current_clock_mhz: None,
+		})
 }
 
 pub fn system_info() -> Result<SystemInfo> {
@@ -66,15 +79,9 @@ pub fn kernel_info() -> Result<KernelInfo> {
 			message: format!("cannot open NT\\CurrentVersion: {e}"),
 		})?;
 
-	let build: String = nt_key
-		.get_value("CurrentBuildNumber")
-		.unwrap_or_default();
-	let product: String = nt_key
-		.get_value("ProductName")
-		.unwrap_or_default();
-	let display_version: String = nt_key
-		.get_value("DisplayVersion")
-		.unwrap_or_default();
+	let build: String = nt_key.get_value("CurrentBuildNumber").unwrap_or_default();
+	let product: String = nt_key.get_value("ProductName").unwrap_or_default();
+	let display_version: String = nt_key.get_value("DisplayVersion").unwrap_or_default();
 	let ubr: u32 = nt_key.get_value("UBR").unwrap_or(0);
 
 	let kernel_version = System::kernel_version().unwrap_or_default();
@@ -96,10 +103,7 @@ pub fn cpu_info() -> Result<CpuInfo> {
 		.first()
 		.map(|c| c.brand().to_string())
 		.unwrap_or_default();
-	let sysinfo_freq = cpus
-		.first()
-		.map(|c| c.frequency() as f64)
-		.unwrap_or(0.0);
+	let sysinfo_freq = cpus.first().map(|c| c.frequency() as f64).unwrap_or(0.0);
 
 	let usage: f64 = if cpus.is_empty() {
 		0.0

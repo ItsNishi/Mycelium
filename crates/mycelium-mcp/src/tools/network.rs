@@ -148,7 +148,10 @@ pub async fn handle_firewall(svc: &MyceliumMcpService) -> Result<CallToolResult,
 	}
 }
 
-pub async fn handle_firewall_add(svc: &MyceliumMcpService, req: FirewallAddRequest) -> Result<CallToolResult, McpError> {
+pub async fn handle_firewall_add(
+	svc: &MyceliumMcpService,
+	req: FirewallAddRequest,
+) -> Result<CallToolResult, McpError> {
 	use mycelium_core::types::{FirewallAction, FirewallRule};
 
 	let resource = format!("chain:{}", req.chain);
@@ -195,7 +198,10 @@ pub async fn handle_firewall_add(svc: &MyceliumMcpService, req: FirewallAddReque
 	}
 }
 
-pub async fn handle_firewall_remove(svc: &MyceliumMcpService, req: FirewallRemoveRequest) -> Result<CallToolResult, McpError> {
+pub async fn handle_firewall_remove(
+	svc: &MyceliumMcpService,
+	req: FirewallRemoveRequest,
+) -> Result<CallToolResult, McpError> {
 	let resource = format!("rule_id:{}", req.rule_id);
 	if let Some(result) = svc.check_policy("firewall_remove", Some(&resource)) {
 		return result;

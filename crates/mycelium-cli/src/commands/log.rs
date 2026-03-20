@@ -33,17 +33,20 @@ pub struct LogCmd {
 
 impl LogCmd {
 	pub fn run(&self, platform: &dyn Platform, format: OutputFormat) {
-		let level = self.level.as_ref().map(|l| match l.to_lowercase().as_str() {
-			"emergency" | "emerg" => LogLevel::Emergency,
-			"alert" => LogLevel::Alert,
-			"critical" | "crit" => LogLevel::Critical,
-			"error" | "err" => LogLevel::Error,
-			"warning" | "warn" => LogLevel::Warning,
-			"notice" => LogLevel::Notice,
-			"info" => LogLevel::Info,
-			"debug" => LogLevel::Debug,
-			_ => LogLevel::Info,
-		});
+		let level = self
+			.level
+			.as_ref()
+			.map(|l| match l.to_lowercase().as_str() {
+				"emergency" | "emerg" => LogLevel::Emergency,
+				"alert" => LogLevel::Alert,
+				"critical" | "crit" => LogLevel::Critical,
+				"error" | "err" => LogLevel::Error,
+				"warning" | "warn" => LogLevel::Warning,
+				"notice" => LogLevel::Notice,
+				"info" => LogLevel::Info,
+				"debug" => LogLevel::Debug,
+				_ => LogLevel::Info,
+			});
 
 		let query = LogQuery {
 			unit: self.unit.clone(),
@@ -63,10 +66,7 @@ impl LogCmd {
 
 impl TableDisplay for LogEntry {
 	fn print_header() {
-		println!(
-			"{:<12} {:<7} {:<20} MESSAGE",
-			"TIMESTAMP", "LEVEL", "UNIT"
-		);
+		println!("{:<12} {:<7} {:<20} MESSAGE", "TIMESTAMP", "LEVEL", "UNIT");
 	}
 
 	fn print_row(&self) {

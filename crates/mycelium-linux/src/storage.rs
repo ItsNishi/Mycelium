@@ -107,19 +107,12 @@ pub fn list_partitions() -> Result<Vec<Partition>> {
 
 fn find_mount_point(part_name: &str) -> Option<String> {
 	let dev_path = format!("/dev/{part_name}");
-	fs::read_to_string("/proc/mounts")
-		.ok()
-		.and_then(|content| {
-			content
-				.lines()
-				.find(|l| l.starts_with(&dev_path))
-				.map(|l| {
-					l.split_whitespace()
-						.nth(1)
-						.unwrap_or("")
-						.to_string()
-				})
-		})
+	fs::read_to_string("/proc/mounts").ok().and_then(|content| {
+		content
+			.lines()
+			.find(|l| l.starts_with(&dev_path))
+			.map(|l| l.split_whitespace().nth(1).unwrap_or("").to_string())
+	})
 }
 
 pub fn list_mounts() -> Result<Vec<MountPoint>> {
@@ -140,10 +133,16 @@ pub fn list_mounts() -> Result<Vec<MountPoint>> {
 		// Skip pseudo-filesystems for cleaner output
 		if matches!(
 			filesystem.as_str(),
-			"proc" | "sysfs" | "devtmpfs" | "securityfs" | "cgroup"
-				| "cgroup2" | "pstore" | "efivarfs" | "bpf"
-				| "tracefs" | "debugfs" | "configfs" | "fusectl"
-				| "hugetlbfs" | "mqueue" | "autofs" | "rpc_pipefs"
+			"proc"
+				| "sysfs" | "devtmpfs"
+				| "securityfs"
+				| "cgroup" | "cgroup2"
+				| "pstore" | "efivarfs"
+				| "bpf" | "tracefs"
+				| "debugfs" | "configfs"
+				| "fusectl" | "hugetlbfs"
+				| "mqueue" | "autofs"
+				| "rpc_pipefs"
 				| "devpts"
 		) {
 			continue;

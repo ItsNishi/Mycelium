@@ -92,10 +92,7 @@ impl TableDisplay for GroupInfo {
 
 impl TableDisplay for KernelModule {
 	fn print_header() {
-		println!(
-			"{:<25} {:>12} {:<10} USED_BY",
-			"NAME", "SIZE", "STATE"
-		);
+		println!("{:<25} {:>12} {:<10} USED_BY", "NAME", "SIZE", "STATE");
 	}
 
 	fn print_row(&self) {
@@ -129,10 +126,7 @@ fn persistence_type_name(pt: &PersistenceType) -> &'static str {
 
 impl TableDisplay for PersistenceEntry {
 	fn print_header() {
-		println!(
-			"{:<12} {:<25} {:<40} COMMAND",
-			"TYPE", "NAME", "LOCATION"
-		);
+		println!("{:<12} {:<25} {:<40} COMMAND", "TYPE", "NAME", "LOCATION");
 	}
 
 	fn print_row(&self) {

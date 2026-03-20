@@ -37,11 +37,8 @@ impl PolicyCmd {
 				let effective = policy.effective(profile);
 
 				if format == OutputFormat::Json {
-					let rules: Vec<RuleDisplay> = effective
-						.rules()
-						.iter()
-						.map(RuleDisplay::from)
-						.collect();
+					let rules: Vec<RuleDisplay> =
+						effective.rules().iter().map(RuleDisplay::from).collect();
 					match serde_json::to_string_pretty(&rules) {
 						Ok(json) => println!("{json}"),
 						Err(e) => eprintln!("error: {e}"),
@@ -50,10 +47,7 @@ impl PolicyCmd {
 					println!("Effective policy for profile: {profile}");
 					println!("Dry-run: {}", effective.is_dry_run());
 					println!();
-					println!(
-						"{:<8} {:<30} REASON",
-						"ACTION", "TARGET"
-					);
+					println!("{:<8} {:<30} REASON", "ACTION", "TARGET");
 					for rule in effective.rules() {
 						let action = match rule.action {
 							Action::Allow => "ALLOW",
@@ -78,11 +72,7 @@ impl PolicyCmd {
 					println!("Default profile: {}", policy.default_profile);
 					println!();
 					for name in &names {
-						let profile = policy
-							.profiles
-							.iter()
-							.find(|p| p.name == *name)
-							.unwrap();
+						let profile = policy.profiles.iter().find(|p| p.name == *name).unwrap();
 						println!(
 							"  {:<20} role={:<12} dry_run={} rules={}",
 							name,
@@ -93,35 +83,24 @@ impl PolicyCmd {
 					}
 				}
 			}
-			Self::Validate { path } => {
-				match std::fs::read_to_string(path) {
-					Ok(content) => match parse_policy_toml(&content) {
-						Ok(policy) => {
-							println!("Policy file is valid.");
-							println!(
-								"  Profiles: {}",
-								policy.profile_names().join(", ")
-							);
-							println!(
-								"  Default: {}",
-								policy.default_profile
-							);
-							println!(
-								"  Global rules: {}",
-								policy.global_rules.len()
-							);
-						}
-						Err(e) => {
-							eprintln!("Invalid policy file: {e}");
-							std::process::exit(1);
-						}
-					},
+			Self::Validate { path } => match std::fs::read_to_string(path) {
+				Ok(content) => match parse_policy_toml(&content) {
+					Ok(policy) => {
+						println!("Policy file is valid.");
+						println!("  Profiles: {}", policy.profile_names().join(", "));
+						println!("  Default: {}", policy.default_profile);
+						println!("  Global rules: {}", policy.global_rules.len());
+					}
 					Err(e) => {
-						eprintln!("Cannot read {path}: {e}");
+						eprintln!("Invalid policy file: {e}");
 						std::process::exit(1);
 					}
+				},
+				Err(e) => {
+					eprintln!("Cannot read {path}: {e}");
+					std::process::exit(1);
 				}
-			}
+			},
 		}
 	}
 }

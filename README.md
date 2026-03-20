@@ -7,6 +7,8 @@ Like fungal mycelium threading through soil to surface nutrients, Mycelium threa
 ![License](https://img.shields.io/badge/license-MIT-blue)
 ![Rust](https://img.shields.io/badge/rust-2024_edition-orange)
 
+> **Note:** This is a personal learning project. I built Mycelium to deepen my understanding of Rust, systems programming, eBPF, and cross-platform OS internals. Contributions and feedback are welcome, but expect rough edges.
+
 ---
 
 ## ✨ Features
@@ -249,7 +251,7 @@ mycelium policy validate policy.toml
 # Build
 cargo build --workspace
 
-# Test (202 passing)
+# Test (245 passing)
 cargo test --workspace
 
 # Lint
@@ -281,6 +283,8 @@ cargo build --workspace --features mycelium-linux/ebpf
 | [Linux Backend](docs/linux-backend.md) | Data sources, `/proc` paths, permission matrix, limitations |
 | [Windows Backend](docs/windows-backend.md) | Data sources, API mapping, size limits, permission matrix |
 | [Development Guide](docs/development.md) | Build, test, conventions, adding methods and backends |
+| [Changelog](CHANGELOG.md) | All notable changes by version |
+| [Contributing](CONTRIBUTING.md) | Guidelines for contributors |
 
 ## 📄 License
 

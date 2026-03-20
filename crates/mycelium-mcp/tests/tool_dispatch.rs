@@ -270,10 +270,7 @@ impl AuditLog for CapturingAuditLog {
 // Helper: build service
 // ---------------------------------------------------------------------------
 
-fn make_service(
-	policy: Policy,
-	agent: &str,
-) -> (MyceliumMcpService, Arc<CapturingAuditLog>) {
+fn make_service(policy: Policy, agent: &str) -> (MyceliumMcpService, Arc<CapturingAuditLog>) {
 	let audit = Arc::new(CapturingAuditLog::new());
 	let svc = MyceliumMcpService::new(
 		Arc::new(MockPlatform),

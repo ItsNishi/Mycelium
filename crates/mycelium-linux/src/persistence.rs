@@ -110,10 +110,7 @@ fn extract_cron_name(line: &str) -> String {
 fn scan_systemd_timers(entries: &mut Vec<PersistenceEntry>) {
 	let start = entries.len();
 
-	let dirs = [
-		"/etc/systemd/system",
-		"/usr/lib/systemd/system",
-	];
+	let dirs = ["/etc/systemd/system", "/usr/lib/systemd/system"];
 
 	for dir in &dirs {
 		let Ok(read_dir) = fs::read_dir(dir) else {
@@ -239,9 +236,7 @@ fn extract_init_description(content: &str) -> Option<String> {
 		if line.contains("END INIT INFO") {
 			break;
 		}
-		if in_block
-			&& let Some(desc) = line.strip_prefix("# Short-Description:")
-		{
+		if in_block && let Some(desc) = line.strip_prefix("# Short-Description:") {
 			return Some(desc.trim().to_string());
 		}
 	}
@@ -439,10 +434,7 @@ mod tests {
 	#[test]
 	fn test_extract_timer_schedule_calendar() {
 		let content = "[Timer]\nOnCalendar=*-*-* 03:00:00\nPersistent=true\n";
-		assert_eq!(
-			extract_timer_schedule(content),
-			"OnCalendar=*-*-* 03:00:00"
-		);
+		assert_eq!(extract_timer_schedule(content), "OnCalendar=*-*-* 03:00:00");
 	}
 
 	#[test]
@@ -478,7 +470,8 @@ mod tests {
 
 	#[test]
 	fn test_extract_desktop_key_exec() {
-		let content = "[Desktop Entry]\nName=My App\nExec=/usr/bin/myapp --start\nType=Application\n";
+		let content =
+			"[Desktop Entry]\nName=My App\nExec=/usr/bin/myapp --start\nType=Application\n";
 		assert_eq!(
 			extract_desktop_key(content, "Exec"),
 			Some("/usr/bin/myapp --start".to_string())

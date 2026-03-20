@@ -58,7 +58,10 @@ pub async fn handle_info(svc: &MyceliumMcpService) -> Result<CallToolResult, Mcp
 	}
 }
 
-pub async fn handle_process(svc: &MyceliumMcpService, req: PidRequest) -> Result<CallToolResult, McpError> {
+pub async fn handle_process(
+	svc: &MyceliumMcpService,
+	req: PidRequest,
+) -> Result<CallToolResult, McpError> {
 	let resource = format!("pid:{}", req.pid);
 	if let Some(result) = svc.check_policy("memory_process", Some(&resource)) {
 		return result;
@@ -82,7 +85,10 @@ pub async fn handle_process(svc: &MyceliumMcpService, req: PidRequest) -> Result
 	}
 }
 
-pub async fn handle_maps(svc: &MyceliumMcpService, req: PidRequest) -> Result<CallToolResult, McpError> {
+pub async fn handle_maps(
+	svc: &MyceliumMcpService,
+	req: PidRequest,
+) -> Result<CallToolResult, McpError> {
 	use mycelium_core::policy::rule::ResourceContext;
 
 	let resource = format!("pid:{}", req.pid);
@@ -90,7 +96,8 @@ pub async fn handle_maps(svc: &MyceliumMcpService, req: PidRequest) -> Result<Ca
 		pid: Some(req.pid),
 		..Default::default()
 	};
-	if let Some(result) = svc.check_policy_with_context("memory_maps", Some(&resource), Some(&ctx)) {
+	if let Some(result) = svc.check_policy_with_context("memory_maps", Some(&resource), Some(&ctx))
+	{
 		return result;
 	}
 	if svc.is_dry_run() {
@@ -112,7 +119,10 @@ pub async fn handle_maps(svc: &MyceliumMcpService, req: PidRequest) -> Result<Ca
 	}
 }
 
-pub async fn handle_read(svc: &MyceliumMcpService, req: MemoryReadRequest) -> Result<CallToolResult, McpError> {
+pub async fn handle_read(
+	svc: &MyceliumMcpService,
+	req: MemoryReadRequest,
+) -> Result<CallToolResult, McpError> {
 	use mycelium_core::policy::rule::ResourceContext;
 
 	let resource = format!("pid:{}:addr:{:#x}:size:{}", req.pid, req.address, req.size);
@@ -120,7 +130,8 @@ pub async fn handle_read(svc: &MyceliumMcpService, req: MemoryReadRequest) -> Re
 		pid: Some(req.pid),
 		..Default::default()
 	};
-	if let Some(result) = svc.check_policy_with_context("memory_read", Some(&resource), Some(&ctx)) {
+	if let Some(result) = svc.check_policy_with_context("memory_read", Some(&resource), Some(&ctx))
+	{
 		return result;
 	}
 	if svc.is_dry_run() {
@@ -131,7 +142,9 @@ pub async fn handle_read(svc: &MyceliumMcpService, req: MemoryReadRequest) -> Re
 	let pid = req.pid;
 	let address = req.address;
 	let size = req.size as usize;
-	match tokio::task::spawn_blocking(move || platform.read_process_memory(pid, address, size)).await {
+	match tokio::task::spawn_blocking(move || platform.read_process_memory(pid, address, size))
+		.await
+	{
 		Ok(Ok(data)) => {
 			svc.log_success("memory_read", Some(&resource));
 			let hex = data.iter().map(|b| format!("{b:02x}")).collect::<String>();
@@ -145,7 +158,10 @@ pub async fn handle_read(svc: &MyceliumMcpService, req: MemoryReadRequest) -> Re
 	}
 }
 
-pub async fn handle_write(svc: &MyceliumMcpService, req: MemoryWriteRequest) -> Result<CallToolResult, McpError> {
+pub async fn handle_write(
+	svc: &MyceliumMcpService,
+	req: MemoryWriteRequest,
+) -> Result<CallToolResult, McpError> {
 	use mycelium_core::policy::rule::ResourceContext;
 
 	let resource = format!("pid:{}:addr:{:#x}", req.pid, req.address);
@@ -153,7 +169,8 @@ pub async fn handle_write(svc: &MyceliumMcpService, req: MemoryWriteRequest) -> 
 		pid: Some(req.pid),
 		..Default::default()
 	};
-	if let Some(result) = svc.check_policy_with_context("memory_write", Some(&resource), Some(&ctx)) {
+	if let Some(result) = svc.check_policy_with_context("memory_write", Some(&resource), Some(&ctx))
+	{
 		return result;
 	}
 	if let Some(result) = svc.check_rate_limit("memory_write") {
@@ -171,10 +188,14 @@ pub async fn handle_write(svc: &MyceliumMcpService, req: MemoryWriteRequest) -> 
 	let platform = svc.platform();
 	let pid = req.pid;
 	let address = req.address;
-	match tokio::task::spawn_blocking(move || platform.write_process_memory(pid, address, &data)).await {
+	match tokio::task::spawn_blocking(move || platform.write_process_memory(pid, address, &data))
+		.await
+	{
 		Ok(Ok(written)) => {
 			svc.log_success("memory_write", Some(&resource));
-			ok_text(format!("{written} bytes written to pid {pid} at {address:#x}"))
+			ok_text(format!(
+				"{written} bytes written to pid {pid} at {address:#x}"
+			))
 		}
 		Ok(Err(e)) => {
 			svc.log_failure("memory_write", &e.to_string());

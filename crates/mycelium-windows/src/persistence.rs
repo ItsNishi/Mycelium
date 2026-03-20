@@ -1,7 +1,7 @@
 //! Persistence mechanism scanning — registry, services, tasks, startup, WMI, COM.
 
-use winreg::enums::*;
 use winreg::RegKey;
+use winreg::enums::*;
 
 use mycelium_core::error::Result;
 use mycelium_core::types::{PersistenceEntry, PersistenceType};
@@ -148,8 +148,8 @@ fn scan_startup_folders(entries: &mut Vec<PersistenceEntry>) {
 // ---------------------------------------------------------------------------
 
 fn scan_services(entries: &mut Vec<PersistenceEntry>) {
-	let Ok(services_key) = RegKey::predef(HKEY_LOCAL_MACHINE)
-		.open_subkey(r"SYSTEM\CurrentControlSet\Services")
+	let Ok(services_key) =
+		RegKey::predef(HKEY_LOCAL_MACHINE).open_subkey(r"SYSTEM\CurrentControlSet\Services")
 	else {
 		tracing::debug!("failed to open Services registry key");
 		return;
@@ -295,9 +295,7 @@ fn scan_wmi_subscriptions(entries: &mut Vec<PersistenceEntry>) {
 		tracing::debug!("failed to initialise COM for WMI subscription scan");
 		return;
 	};
-	let Ok(wmi_con) =
-		wmi::WMIConnection::with_namespace_path(r"ROOT\subscription", com_lib)
-	else {
+	let Ok(wmi_con) = wmi::WMIConnection::with_namespace_path(r"ROOT\subscription", com_lib) else {
 		tracing::debug!("failed to connect to ROOT\\subscription namespace");
 		return;
 	};
@@ -358,8 +356,7 @@ fn scan_wmi_subscriptions(entries: &mut Vec<PersistenceEntry>) {
 // ---------------------------------------------------------------------------
 
 fn scan_com_hijacks(entries: &mut Vec<PersistenceEntry>) {
-	let Ok(clsid_key) = RegKey::predef(HKEY_CURRENT_USER)
-		.open_subkey(r"SOFTWARE\Classes\CLSID")
+	let Ok(clsid_key) = RegKey::predef(HKEY_CURRENT_USER).open_subkey(r"SOFTWARE\Classes\CLSID")
 	else {
 		tracing::debug!("HKCU\\SOFTWARE\\Classes\\CLSID not accessible");
 		return;
@@ -382,9 +379,7 @@ fn scan_com_hijacks(entries: &mut Vec<PersistenceEntry>) {
 			entries.push(PersistenceEntry {
 				persistence_type: PersistenceType::ComHijack,
 				name: clsid.clone(),
-				location: format!(
-					r"HKCU\SOFTWARE\Classes\CLSID\{clsid}\{server_type}"
-				),
+				location: format!(r"HKCU\SOFTWARE\Classes\CLSID\{clsid}\{server_type}"),
 				value,
 				enabled: true,
 				description: Some(format!("COM {server_type} hijack")),

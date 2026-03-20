@@ -5,9 +5,7 @@ use std::mem;
 use windows::Win32::Foundation::{CloseHandle, HANDLE};
 use windows::Win32::System::Diagnostics::Debug::ReadProcessMemory;
 use windows::Win32::System::ProcessStatus::{EnumProcessModules, GetModuleInformation, MODULEINFO};
-use windows::Win32::System::Threading::{
-	OpenProcess, PROCESS_QUERY_INFORMATION, PROCESS_VM_READ,
-};
+use windows::Win32::System::Threading::{OpenProcess, PROCESS_QUERY_INFORMATION, PROCESS_VM_READ};
 
 use mycelium_core::error::{MyceliumError, Result};
 use mycelium_core::types::{PeExport, PeImport, PeInfo, PeSection, PeTarget};
@@ -278,11 +276,7 @@ enum ReaderKind {
 	Process,
 }
 
-fn resolve_rva(
-	rva: u32,
-	kind: &ReaderKind,
-	sections: &[SectionHeader],
-) -> Option<usize> {
+fn resolve_rva(rva: u32, kind: &ReaderKind, sections: &[SectionHeader]) -> Option<usize> {
 	match kind {
 		ReaderKind::File => rva_to_file_offset(rva, sections),
 		ReaderKind::Process => Some(rva as usize),
@@ -429,7 +423,14 @@ fn parse_pe(reader: &dyn PeReader, kind: &ReaderKind) -> Result<PeInfo> {
 
 	// 7. Parse imports
 	let imports = if import_rva != 0 && import_size != 0 {
-		parse_imports(reader, import_rva, import_size, &sections, kind, is_pe32_plus)?
+		parse_imports(
+			reader,
+			import_rva,
+			import_size,
+			&sections,
+			kind,
+			is_pe32_plus,
+		)?
 	} else {
 		Vec::new()
 	};
@@ -544,17 +545,11 @@ fn parse_import_thunks(
 	total_functions: &mut usize,
 ) -> Result<Vec<String>> {
 	let thunk_offset = resolve_rva(thunk_rva, kind, sections).ok_or_else(|| {
-		MyceliumError::ParseError(format!(
-			"cannot resolve import thunk RVA 0x{thunk_rva:08X}"
-		))
+		MyceliumError::ParseError(format!("cannot resolve import thunk RVA 0x{thunk_rva:08X}"))
 	})?;
 
 	let thunk_size: usize = if is_pe32_plus { 8 } else { 4 };
-	let ordinal_flag: u64 = if is_pe32_plus {
-		1u64 << 63
-	} else {
-		1u64 << 31
-	};
+	let ordinal_flag: u64 = if is_pe32_plus { 1u64 << 63 } else { 1u64 << 31 };
 
 	let mut functions = Vec::new();
 
@@ -656,10 +651,9 @@ fn parse_exports(
 	}
 
 	// Read the AddressOfFunctions array (u32 each)
-	let functions_offset =
-		resolve_rva(addr_of_functions_rva, kind, sections).ok_or_else(|| {
-			MyceliumError::ParseError("cannot resolve AddressOfFunctions RVA".to_string())
-		})?;
+	let functions_offset = resolve_rva(addr_of_functions_rva, kind, sections).ok_or_else(|| {
+		MyceliumError::ParseError("cannot resolve AddressOfFunctions RVA".to_string())
+	})?;
 	let functions_data = reader.read_at(functions_offset, number_of_functions * 4)?;
 
 	// Read the AddressOfNames array (u32 RVAs each)
@@ -676,9 +670,7 @@ fn parse_exports(
 	let ordinals_data = if number_of_names > 0 && addr_of_name_ordinals_rva != 0 {
 		let ordinals_offset =
 			resolve_rva(addr_of_name_ordinals_rva, kind, sections).ok_or_else(|| {
-				MyceliumError::ParseError(
-					"cannot resolve AddressOfNameOrdinals RVA".to_string(),
-				)
+				MyceliumError::ParseError("cannot resolve AddressOfNameOrdinals RVA".to_string())
 			})?;
 		reader.read_at(ordinals_offset, number_of_names * 2)?
 	} else {
@@ -800,9 +792,7 @@ pub(crate) fn inspect_pe(target: &PeTarget) -> Result<PeInfo> {
 			let handle =
 				SafeHandle::open_process(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, *pid)
 					.map_err(|e| {
-						MyceliumError::PermissionDenied(format!(
-							"cannot open process {pid}: {e}"
-						))
+						MyceliumError::PermissionDenied(format!("cannot open process {pid}: {e}"))
 					})?;
 
 			let base_address = find_process_base_address(handle.raw())?;
@@ -1121,9 +1111,21 @@ mod tests {
 		assert_eq!(info.sections[0].virtual_address, 0x1000);
 		assert_eq!(info.sections[0].virtual_size, 0x200);
 		assert_eq!(info.sections[0].raw_size, 0x200);
-		assert!(info.sections[0].characteristics.contains(&"CODE".to_string()));
-		assert!(info.sections[0].characteristics.contains(&"EXECUTE".to_string()));
-		assert!(info.sections[0].characteristics.contains(&"READ".to_string()));
+		assert!(
+			info.sections[0]
+				.characteristics
+				.contains(&"CODE".to_string())
+		);
+		assert!(
+			info.sections[0]
+				.characteristics
+				.contains(&"EXECUTE".to_string())
+		);
+		assert!(
+			info.sections[0]
+				.characteristics
+				.contains(&"READ".to_string())
+		);
 		assert!(info.imports.is_empty());
 		assert!(info.exports.is_empty());
 	}

@@ -3,22 +3,22 @@
 use std::mem;
 
 use sysinfo::{Pid, ProcessStatus, ProcessesToUpdate, System};
+use windows::Wdk::System::Threading::{NtQueryInformationProcess, ProcessBasicInformation};
 use windows::Win32::Foundation::{CloseHandle, HANDLE};
 use windows::Win32::Security::{
-	GetTokenInformation, LookupAccountSidW, TokenUser, TOKEN_QUERY, TOKEN_USER, SID_NAME_USE,
+	GetTokenInformation, LookupAccountSidW, SID_NAME_USE, TOKEN_QUERY, TOKEN_USER, TokenUser,
 };
+use windows::Win32::System::Diagnostics::Debug::ReadProcessMemory;
 use windows::Win32::System::Diagnostics::ToolHelp::{
-	CreateToolhelp32Snapshot, Thread32First, Thread32Next, THREADENTRY32, TH32CS_SNAPTHREAD,
+	CreateToolhelp32Snapshot, TH32CS_SNAPTHREAD, THREADENTRY32, Thread32First, Thread32Next,
 };
 use windows::Win32::System::ProcessStatus::{
 	EnumProcessModules, GetModuleFileNameExW, GetModuleInformation, MODULEINFO,
 };
-use windows::Win32::System::Diagnostics::Debug::ReadProcessMemory;
 use windows::Win32::System::Threading::{
 	GetProcessHandleCount, OpenProcess, OpenProcessToken, PROCESS_BASIC_INFORMATION,
 	PROCESS_QUERY_INFORMATION, PROCESS_VM_READ,
 };
-use windows::Wdk::System::Threading::{NtQueryInformationProcess, ProcessBasicInformation};
 use windows::core::PWSTR;
 
 use mycelium_core::error::{MyceliumError, Result};
@@ -116,11 +116,7 @@ fn get_handle_count(pid: u32) -> u32 {
 		let mut count = 0u32;
 		let ok = GetProcessHandleCount(process, &mut count);
 		let _ = CloseHandle(process);
-		if ok.is_ok() {
-			count
-		} else {
-			0
-		}
+		if ok.is_ok() { count } else { 0 }
 	}
 }
 
@@ -167,11 +163,7 @@ pub fn list_processes() -> Result<Vec<ProcessInfo>> {
 	let mut sys = System::new();
 	sys.refresh_processes(ProcessesToUpdate::All, true);
 
-	let procs = sys
-		.processes()
-		.values()
-		.map(build_process_info)
-		.collect();
+	let procs = sys.processes().values().map(build_process_info).collect();
 	Ok(procs)
 }
 
@@ -295,12 +287,8 @@ pub fn list_process_threads(pid: u32) -> Result<Vec<ThreadInfo>> {
 pub fn list_process_modules(pid: u32) -> Result<Vec<ProcessModule>> {
 	let _ = crate::privilege::ensure_debug_privilege();
 
-	let handle = unsafe {
-		OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, false, pid)
-	}
-	.map_err(|e| {
-		MyceliumError::PermissionDenied(format!("cannot open process {pid}: {e}"))
-	})?;
+	let handle = unsafe { OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, false, pid) }
+		.map_err(|e| MyceliumError::PermissionDenied(format!("cannot open process {pid}: {e}")))?;
 
 	let result = enumerate_modules(handle);
 	unsafe {
@@ -326,8 +314,7 @@ fn enumerate_modules(handle: HANDLE) -> Result<Vec<ProcessModule>> {
 		message: format!("EnumProcessModules failed: {e}"),
 	})?;
 
-	let count =
-		cb_needed as usize / mem::size_of::<windows::Win32::Foundation::HMODULE>();
+	let count = cb_needed as usize / mem::size_of::<windows::Win32::Foundation::HMODULE>();
 	hmodules.truncate(count);
 
 	let mut modules = Vec::with_capacity(count);
@@ -516,12 +503,8 @@ fn read_process_env(handle: HANDLE) -> Result<Vec<(String, String)>> {
 pub fn process_environment(pid: u32) -> Result<Vec<(String, String)>> {
 	let _ = crate::privilege::ensure_debug_privilege();
 
-	let handle = unsafe {
-		OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, false, pid)
-	}
-	.map_err(|e| {
-		MyceliumError::PermissionDenied(format!("cannot open process {pid}: {e}"))
-	})?;
+	let handle = unsafe { OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, false, pid) }
+		.map_err(|e| MyceliumError::PermissionDenied(format!("cannot open process {pid}: {e}")))?;
 
 	let result = read_process_env(handle);
 	unsafe {
@@ -593,10 +576,13 @@ mod tests {
 	fn test_parse_env_block_simple() {
 		let block = build_env_block(&["FOO=bar", "BAZ=qux"]);
 		let result = parse_env_block_utf16(&block);
-		assert_eq!(result, vec![
-			("FOO".to_string(), "bar".to_string()),
-			("BAZ".to_string(), "qux".to_string()),
-		]);
+		assert_eq!(
+			result,
+			vec![
+				("FOO".to_string(), "bar".to_string()),
+				("BAZ".to_string(), "qux".to_string()),
+			]
+		);
 	}
 
 	#[test]

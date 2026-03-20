@@ -58,12 +58,9 @@ fn map_os_error(code: i32, original: &str) -> String {
 
 	match win32_code {
 		Some(5) => "Access denied — try running with administrator elevation".to_string(),
-		Some(299) => {
-			"Partial read/write — target memory may be partially unmapped".to_string()
-		}
+		Some(299) => "Partial read/write — target memory may be partially unmapped".to_string(),
 		Some(998) => {
-			"Invalid memory address — check region is committed with correct protection"
-				.to_string()
+			"Invalid memory address — check region is committed with correct protection".to_string()
 		}
 		_ => format!("OS error {code}: {original}"),
 	}
@@ -102,7 +99,9 @@ mod tests {
 	fn test_os_error_code_299() {
 		let err = MyceliumError::OsError {
 			code: 299,
-			message: "Only part of a ReadProcessMemory or WriteProcessMemory request was completed.".into(),
+			message:
+				"Only part of a ReadProcessMemory or WriteProcessMemory request was completed."
+					.into(),
 		};
 		let msg = map_error_message(&err, None);
 		assert!(msg.contains("partially unmapped"), "got: {msg}");
@@ -115,7 +114,10 @@ mod tests {
 			message: "Invalid access to memory location.".into(),
 		};
 		let msg = map_error_message(&err, None);
-		assert!(msg.contains("committed with correct protection"), "got: {msg}");
+		assert!(
+			msg.contains("committed with correct protection"),
+			"got: {msg}"
+		);
 	}
 
 	#[test]

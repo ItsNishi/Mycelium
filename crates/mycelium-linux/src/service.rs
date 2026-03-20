@@ -245,17 +245,13 @@ pub fn read_logs(query: &LogQuery) -> Result<Vec<LogEntry>> {
 			continue;
 		}
 
-		let timestamp: u64 = parts[0]
-			.parse::<f64>()
-			.map(|f| f as u64)
-			.unwrap_or(0);
+		let timestamp: u64 = parts[0].parse::<f64>().map(|f| f as u64).unwrap_or(0);
 
 		// parts[1] = hostname, parts[2] = unit/ident, parts[3..] = message
 		let unit_raw = parts[2].trim_end_matches(':');
 		let (unit_name, pid) = if let Some(bracket_pos) = unit_raw.find('[') {
 			let name = &unit_raw[..bracket_pos];
-			let pid_str = unit_raw[bracket_pos + 1..]
-				.trim_end_matches(']');
+			let pid_str = unit_raw[bracket_pos + 1..].trim_end_matches(']');
 			(name.to_string(), pid_str.parse().ok())
 		} else {
 			(unit_raw.to_string(), None)

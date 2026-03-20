@@ -64,9 +64,8 @@ pub fn attach_probe(config: &ProbeConfig, state: &ProbeState) -> Result<ProbeHan
 	// Load the eBPF bytecode compiled at build time.
 	let ebpf_bytes = include_bytes_aligned!(concat!(env!("OUT_DIR"), "/mycelium-ebpf"));
 
-	let mut ebpf = Ebpf::load(ebpf_bytes).map_err(|e| {
-		MyceliumError::ProbeError(format!("failed to load eBPF bytecode: {e}"))
-	})?;
+	let mut ebpf = Ebpf::load(ebpf_bytes)
+		.map_err(|e| MyceliumError::ProbeError(format!("failed to load eBPF bytecode: {e}")))?;
 
 	// Populate filter maps from config.
 	populate_filters(&mut ebpf, config)?;
@@ -78,23 +77,15 @@ pub fn attach_probe(config: &ProbeConfig, state: &ProbeState) -> Result<ProbeHan
 
 	match config.probe_type {
 		ProbeType::SyscallTrace => {
-			attach_syscall_trace(
-				&mut ebpf, &tx, &shutdown, &events_captured, &events_dropped,
-			)?;
+			attach_syscall_trace(&mut ebpf, &tx, &shutdown, &events_captured, &events_dropped)?;
 		}
 		ProbeType::NetworkMonitor => {
-			attach_net_monitor(
-				&mut ebpf, &tx, &shutdown, &events_captured, &events_dropped,
-			)?;
+			attach_net_monitor(&mut ebpf, &tx, &shutdown, &events_captured, &events_dropped)?;
 		}
 	}
 
 	// Store the Ebpf instance to keep programs attached.
-	state
-		.ebpf_instances
-		.lock()
-		.unwrap()
-		.insert(handle_id, ebpf);
+	state.ebpf_instances.lock().unwrap().insert(handle_id, ebpf);
 
 	let active = ActiveProbe {
 		probe_type: config.probe_type,
@@ -242,13 +233,9 @@ fn attach_net_monitor(
 		.load()
 		.map_err(|e| MyceliumError::ProbeError(format!("failed to load program: {e}")))?;
 
-	program
-		.attach("sock", "inet_sock_set_state")
-		.map_err(|e| {
-			MyceliumError::ProbeError(format!(
-				"failed to attach to sock/inet_sock_set_state: {e}"
-			))
-		})?;
+	program.attach("sock", "inet_sock_set_state").map_err(|e| {
+		MyceliumError::ProbeError(format!("failed to attach to sock/inet_sock_set_state: {e}"))
+	})?;
 
 	let ring_buf = RingBuf::try_from(
 		ebpf.map_mut("NET_EVENTS")
@@ -278,13 +265,9 @@ fn populate_filters(ebpf: &mut Ebpf, config: &ProbeConfig) -> Result<()> {
 		if let Ok(pid) = target.parse::<u32>() {
 			let mut pid_filter: HashMap<&mut MapData, u32, u8> = HashMap::try_from(
 				ebpf.map_mut("PID_FILTER")
-					.ok_or_else(|| {
-						MyceliumError::ProbeError("PID_FILTER map not found".into())
-					})?,
+					.ok_or_else(|| MyceliumError::ProbeError("PID_FILTER map not found".into()))?,
 			)
-			.map_err(|e| {
-				MyceliumError::ProbeError(format!("failed to open PID_FILTER: {e}"))
-			})?;
+			.map_err(|e| MyceliumError::ProbeError(format!("failed to open PID_FILTER: {e}")))?;
 
 			pid_filter.insert(pid, 1, 0).map_err(|e| {
 				MyceliumError::ProbeError(format!("failed to insert PID filter: {e}"))
@@ -295,15 +278,13 @@ fn populate_filters(ebpf: &mut Ebpf, config: &ProbeConfig) -> Result<()> {
 	// Parse filter string for syscall numbers/names.
 	if config.probe_type == ProbeType::SyscallTrace {
 		if let Some(ref filter) = config.filter {
-			let mut syscall_filter: HashMap<&mut MapData, u64, u8> = HashMap::try_from(
-				ebpf.map_mut("SYSCALL_FILTER")
-					.ok_or_else(|| {
-						MyceliumError::ProbeError("SYSCALL_FILTER map not found".into())
-					})?,
-			)
-			.map_err(|e| {
-				MyceliumError::ProbeError(format!("failed to open SYSCALL_FILTER: {e}"))
-			})?;
+			let mut syscall_filter: HashMap<&mut MapData, u64, u8> =
+				HashMap::try_from(ebpf.map_mut("SYSCALL_FILTER").ok_or_else(|| {
+					MyceliumError::ProbeError("SYSCALL_FILTER map not found".into())
+				})?)
+				.map_err(|e| {
+					MyceliumError::ProbeError(format!("failed to open SYSCALL_FILTER: {e}"))
+				})?;
 
 			for item in filter.split(',') {
 				let item = item.trim();
@@ -315,9 +296,7 @@ fn populate_filters(ebpf: &mut Ebpf, config: &ProbeConfig) -> Result<()> {
 					})?
 				};
 				syscall_filter.insert(nr, 1, 0).map_err(|e| {
-					MyceliumError::ProbeError(format!(
-						"failed to insert syscall filter: {e}"
-					))
+					MyceliumError::ProbeError(format!("failed to insert syscall filter: {e}"))
 				})?;
 			}
 		}
@@ -343,9 +322,8 @@ fn poll_syscall_ring_buffer(
 			}
 
 			// Safety: SyscallEvent is #[repr(C)] and we verified the size.
-			let event: SyscallEvent = unsafe {
-				core::ptr::read_unaligned(data.as_ptr() as *const SyscallEvent)
-			};
+			let event: SyscallEvent =
+				unsafe { core::ptr::read_unaligned(data.as_ptr() as *const SyscallEvent) };
 
 			let comm = comm_to_string(&event.comm);
 			let syscall_name = syscall_nr_to_name(event.syscall_nr);
@@ -389,9 +367,8 @@ fn poll_net_ring_buffer(
 				continue;
 			}
 
-			let event: NetEvent = unsafe {
-				core::ptr::read_unaligned(data.as_ptr() as *const NetEvent)
-			};
+			let event: NetEvent =
+				unsafe { core::ptr::read_unaligned(data.as_ptr() as *const NetEvent) };
 
 			let comm = comm_to_string(&event.comm);
 			let src = format_addr(event.address_family, &event.src_addr);
@@ -443,9 +420,7 @@ fn format_addr(family: u8, addr: &[u8; 16]) -> String {
 			let bytes: [u8; 4] = [addr[0], addr[1], addr[2], addr[3]];
 			Ipv4Addr::from(bytes).to_string()
 		}
-		AF_INET6 => {
-			Ipv6Addr::from(*addr).to_string()
-		}
+		AF_INET6 => Ipv6Addr::from(*addr).to_string(),
 		_ => {
 			format!("?{:02x?}", addr)
 		}
@@ -479,7 +454,10 @@ fn comm_to_string(comm: &[u8; 16]) -> String {
 
 /// Look up a syscall number by name (x86_64).
 fn syscall_name_to_nr(name: &str) -> Option<u64> {
-	SYSCALL_TABLE.iter().find(|&&(_, n)| n == name).map(|&(nr, _)| nr)
+	SYSCALL_TABLE
+		.iter()
+		.find(|&&(_, n)| n == name)
+		.map(|&(nr, _)| nr)
 }
 
 /// Look up a syscall name by number (x86_64).
@@ -862,8 +840,8 @@ mod tests {
 	#[test]
 	fn test_format_addr_ipv6_full() {
 		let addr: [u8; 16] = [
-			0x20, 0x01, 0x0d, 0xb8, 0x00, 0x00, 0x00, 0x00,
-			0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01,
+			0x20, 0x01, 0x0d, 0xb8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+			0x00, 0x01,
 		];
 		assert_eq!(format_addr(AF_INET6, &addr), "2001:db8::1");
 	}

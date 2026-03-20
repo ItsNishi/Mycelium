@@ -1,6 +1,8 @@
 use clap::Subcommand;
 use mycelium_core::platform::Platform;
-use mycelium_core::types::{MemoryInfo, MemoryRegion, MemorySearchOptions, ProcessMemory, SearchPattern};
+use mycelium_core::types::{
+	MemoryInfo, MemoryRegion, MemorySearchOptions, ProcessMemory, SearchPattern,
+};
 
 use crate::output::*;
 
@@ -81,7 +83,9 @@ impl MemoryCmd {
 			}
 			Self::Read { pid, address, size } => {
 				if dry_run {
-					println!("[dry-run] memory read would read {size} bytes from pid {pid} at {address}");
+					println!(
+						"[dry-run] memory read would read {size} bytes from pid {pid} at {address}"
+					);
 					return;
 				}
 				let addr = match parse_address(address) {
@@ -96,7 +100,11 @@ impl MemoryCmd {
 					Err(e) => eprintln!("error: {e}"),
 				}
 			}
-			Self::Write { pid, address, hex_data } => {
+			Self::Write {
+				pid,
+				address,
+				hex_data,
+			} => {
 				if dry_run {
 					println!(
 						"[dry-run] memory write would write {} bytes to pid {pid} at {address}",
@@ -180,8 +188,9 @@ impl MemoryCmd {
 									m.region_pathname.as_deref().unwrap_or(""),
 								);
 								if !m.context_bytes.is_empty() {
-									let ctx_start =
-										m.address.saturating_sub((m.context_bytes.len() / 2) as u64);
+									let ctx_start = m
+										.address
+										.saturating_sub((m.context_bytes.len() / 2) as u64);
 									print_hex_dump(ctx_start, &m.context_bytes);
 								}
 								println!();
@@ -200,13 +209,17 @@ fn parse_address(s: &str) -> Result<u64, String> {
 	if let Some(hex) = s.strip_prefix("0x").or_else(|| s.strip_prefix("0X")) {
 		u64::from_str_radix(hex, 16).map_err(|e| format!("invalid hex address '{s}': {e}"))
 	} else {
-		s.parse::<u64>().map_err(|e| format!("invalid address '{s}': {e}"))
+		s.parse::<u64>()
+			.map_err(|e| format!("invalid address '{s}': {e}"))
 	}
 }
 
 /// Decode a hex string into bytes.
 fn hex_decode(s: &str) -> Result<Vec<u8>, String> {
-	let s = s.strip_prefix("0x").or_else(|| s.strip_prefix("0X")).unwrap_or(s);
+	let s = s
+		.strip_prefix("0x")
+		.or_else(|| s.strip_prefix("0X"))
+		.unwrap_or(s);
 	if !s.len().is_multiple_of(2) {
 		return Err(format!("hex string has odd length: {}", s.len()));
 	}

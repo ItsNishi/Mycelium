@@ -179,10 +179,7 @@ fn io_stats_ok() {
 #[test]
 fn system_info_hostname_non_empty() {
 	let info = platform().system_info().unwrap();
-	assert!(
-		!info.hostname.is_empty(),
-		"hostname should not be empty"
-	);
+	assert!(!info.hostname.is_empty(), "hostname should not be empty");
 }
 
 #[test]
@@ -253,10 +250,7 @@ fn list_persistence_entries_ok() {
 #[test]
 fn list_tunables_net_non_empty() {
 	let tunables = platform().list_tunables("net").unwrap();
-	assert!(
-		!tunables.is_empty(),
-		"net tunables should not be empty"
-	);
+	assert!(!tunables.is_empty(), "net tunables should not be empty");
 }
 
 #[test]

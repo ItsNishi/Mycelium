@@ -1,7 +1,7 @@
 //! Response helpers for MCP tool handlers.
 
-use rmcp::model::{CallToolResult, Content};
 use rmcp::ErrorData as McpError;
+use rmcp::model::{CallToolResult, Content};
 
 use crate::error_mapping::{ErrorContext, map_error_message};
 use mycelium_core::error::MyceliumError;
@@ -26,7 +26,9 @@ pub fn err_text(msg: &str) -> Result<CallToolResult, McpError> {
 
 /// Return a dry-run notice.
 pub fn dry_run_text(tool: &str) -> Result<CallToolResult, McpError> {
-	ok_text(format!("[dry-run] {tool} would execute but dry-run is active"))
+	ok_text(format!(
+		"[dry-run] {tool} would execute but dry-run is active"
+	))
 }
 
 /// Return an error response with OS-level error mapping for agent-friendly messages.

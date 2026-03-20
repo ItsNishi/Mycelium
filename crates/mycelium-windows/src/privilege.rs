@@ -3,23 +3,23 @@
 
 use std::sync::OnceLock;
 
-use windows::core::{PCWSTR, PWSTR};
 use windows::Win32::Foundation::{
 	CloseHandle, GetLastError, HANDLE, HLOCAL, LUID, LocalFree, WIN32_ERROR,
 };
 use windows::Win32::Security::Authorization::ConvertSidToStringSidW;
 use windows::Win32::Security::{
 	AdjustTokenPrivileges, GetSidSubAuthority, GetSidSubAuthorityCount, GetTokenInformation,
-	IsTokenRestricted, LookupAccountSidW, LookupPrivilegeNameW, LookupPrivilegeValueW,
-	LUID_AND_ATTRIBUTES, PSID, SE_DEBUG_NAME, SE_PRIVILEGE_ENABLED, SID_AND_ATTRIBUTES,
-	SID_NAME_USE, TOKEN_ADJUST_PRIVILEGES, TOKEN_ELEVATION, TOKEN_GROUPS,
-	TOKEN_INFORMATION_CLASS, TOKEN_MANDATORY_LABEL, TOKEN_PRIVILEGES, TOKEN_QUERY, TOKEN_USER,
-	TokenElevation, TokenElevationType, TokenGroups, TokenImpersonationLevel,
-	TokenIntegrityLevel, TokenPrivileges, TokenSessionId, TokenType as TokenTypeClass, TokenUser,
+	IsTokenRestricted, LUID_AND_ATTRIBUTES, LookupAccountSidW, LookupPrivilegeNameW,
+	LookupPrivilegeValueW, PSID, SE_DEBUG_NAME, SE_PRIVILEGE_ENABLED, SID_AND_ATTRIBUTES,
+	SID_NAME_USE, TOKEN_ADJUST_PRIVILEGES, TOKEN_ELEVATION, TOKEN_GROUPS, TOKEN_INFORMATION_CLASS,
+	TOKEN_MANDATORY_LABEL, TOKEN_PRIVILEGES, TOKEN_QUERY, TOKEN_USER, TokenElevation,
+	TokenElevationType, TokenGroups, TokenImpersonationLevel, TokenIntegrityLevel, TokenPrivileges,
+	TokenSessionId, TokenType as TokenTypeClass, TokenUser,
 };
 use windows::Win32::System::Threading::{
 	GetCurrentProcess, OpenProcess, OpenProcessToken, PROCESS_QUERY_INFORMATION,
 };
+use windows::core::{PCWSTR, PWSTR};
 
 use mycelium_core::error::{MyceliumError, Result};
 use mycelium_core::types::{PrivilegeInfo, TokenGroup, TokenInfo};
@@ -33,9 +33,7 @@ pub(crate) fn is_elevated() -> bool {
 			return false;
 		}
 
-		let mut elevation = TOKEN_ELEVATION {
-			TokenIsElevated: 0,
-		};
+		let mut elevation = TOKEN_ELEVATION { TokenIsElevated: 0 };
 		let mut return_length = 0u32;
 		let ok = GetTokenInformation(
 			token,
@@ -81,9 +79,8 @@ pub(crate) fn enable_debug_privilege() -> Result<()> {
 		let last_err = GetLastError();
 		let _ = CloseHandle(token);
 
-		result.map_err(|e| {
-			MyceliumError::PermissionDenied(format!("AdjustTokenPrivileges: {e}"))
-		})?;
+		result
+			.map_err(|e| MyceliumError::PermissionDenied(format!("AdjustTokenPrivileges: {e}")))?;
 
 		if last_err != WIN32_ERROR(0) {
 			return Err(MyceliumError::PermissionDenied(
@@ -186,10 +183,8 @@ pub(crate) fn enumerate_token_privileges(pid: u32) -> Result<Vec<PrivilegeInfo>>
 		}
 
 		let tp = &*(buffer.as_ptr() as *const TOKEN_PRIVILEGES);
-		let privileges = std::slice::from_raw_parts(
-			tp.Privileges.as_ptr(),
-			tp.PrivilegeCount as usize,
-		);
+		let privileges =
+			std::slice::from_raw_parts(tp.Privileges.as_ptr(), tp.PrivilegeCount as usize);
 
 		let mut result = Vec::with_capacity(privileges.len());
 
@@ -213,10 +208,7 @@ const MAX_GROUPS: usize = 256;
 
 /// Two-pass helper: calls `GetTokenInformation` once with a zero-length buffer
 /// to learn the required size, then allocates and calls again.
-unsafe fn get_token_info_buffer(
-	token: HANDLE,
-	class: TOKEN_INFORMATION_CLASS,
-) -> Result<Vec<u8>> {
+unsafe fn get_token_info_buffer(token: HANDLE, class: TOKEN_INFORMATION_CLASS) -> Result<Vec<u8>> {
 	let mut needed = 0u32;
 	let _ = unsafe { GetTokenInformation(token, class, None, 0, &mut needed) };
 
@@ -453,18 +445,15 @@ pub(crate) fn inspect_process_token(pid: u32) -> Result<TokenInfo> {
 			.map(|buf| {
 				let tg = &*(buf.as_ptr() as *const TOKEN_GROUPS);
 				let count = (tg.GroupCount as usize).min(MAX_GROUPS);
-				let entries =
-					std::slice::from_raw_parts(tg.Groups.as_ptr(), count);
+				let entries = std::slice::from_raw_parts(tg.Groups.as_ptr(), count);
 
 				entries
 					.iter()
 					.map(|sa: &SID_AND_ATTRIBUTES| {
 						let name = resolve_sid_to_account(sa.Sid)
 							.unwrap_or_else(|| "<unknown>".to_string());
-						let sid_str =
-							sid_to_string(sa.Sid).unwrap_or_default();
-						let attributes =
-							decode_group_attributes(sa.Attributes);
+						let sid_str = sid_to_string(sa.Sid).unwrap_or_default();
+						let attributes = decode_group_attributes(sa.Attributes);
 						TokenGroup {
 							name,
 							sid: sid_str,
@@ -483,16 +472,13 @@ pub(crate) fn inspect_process_token(pid: u32) -> Result<TokenInfo> {
 			.ok()
 			.map(|buf| {
 				let tp = &*(buf.as_ptr() as *const TOKEN_PRIVILEGES);
-				let entries = std::slice::from_raw_parts(
-					tp.Privileges.as_ptr(),
-					tp.PrivilegeCount as usize,
-				);
+				let entries =
+					std::slice::from_raw_parts(tp.Privileges.as_ptr(), tp.PrivilegeCount as usize);
 				entries
 					.iter()
 					.map(|entry| {
 						let name = lookup_privilege_name(&entry.Luid);
-						let enabled =
-							entry.Attributes.contains(SE_PRIVILEGE_ENABLED);
+						let enabled = entry.Attributes.contains(SE_PRIVILEGE_ENABLED);
 						PrivilegeInfo { name, enabled }
 					})
 					.collect::<Vec<_>>()

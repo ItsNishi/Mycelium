@@ -5,7 +5,11 @@ use clap::{Parser, Subcommand};
 use output::OutputFormat;
 
 #[derive(Parser)]
-#[command(name = "mycelium", version, about = "Structured OS introspection for humans and AI agents")]
+#[command(
+	name = "mycelium",
+	version,
+	about = "Structured OS introspection for humans and AI agents"
+)]
 struct Cli {
 	/// Output as JSON
 	#[arg(long, global = true)]

@@ -205,10 +205,7 @@ impl TableDisplay for Route {
 
 impl TableDisplay for OpenPort {
 	fn print_header() {
-		println!(
-			"{:<6} {:<25} {:>7} PROCESS",
-			"PROTO", "ADDRESS", "PID"
-		);
+		println!("{:<6} {:<25} {:>7} PROCESS", "PROTO", "ADDRESS", "PID");
 	}
 
 	fn print_row(&self) {
@@ -241,7 +238,9 @@ impl TableDisplay for FirewallRule {
 			self.protocol.as_deref().unwrap_or("-"),
 			self.source.as_deref().unwrap_or("*"),
 			self.destination.as_deref().unwrap_or("*"),
-			self.port.map(|p| p.to_string()).unwrap_or_else(|| "-".into()),
+			self.port
+				.map(|p| p.to_string())
+				.unwrap_or_else(|| "-".into()),
 			action,
 		);
 	}

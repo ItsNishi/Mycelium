@@ -3,18 +3,15 @@
 use std::collections::HashMap;
 use std::process::Command;
 
-use windows::core::{PCWSTR, PWSTR};
 use windows::Win32::NetworkManagement::NetManagement::{
-	LOCALGROUP_INFO_1, LOCALGROUP_MEMBERS_INFO_3, MAX_PREFERRED_LENGTH,
-	NET_USER_ENUM_FILTER_FLAGS, NetApiBufferFree, NetLocalGroupEnum, NetLocalGroupGetMembers,
-	NetUserEnum, USER_INFO_3,
+	LOCALGROUP_INFO_1, LOCALGROUP_MEMBERS_INFO_3, MAX_PREFERRED_LENGTH, NET_USER_ENUM_FILTER_FLAGS,
+	NetApiBufferFree, NetLocalGroupEnum, NetLocalGroupGetMembers, NetUserEnum, USER_INFO_3,
 };
+use windows::core::{PCWSTR, PWSTR};
 use wmi::{COMLibrary, WMIConnection};
 
 use mycelium_core::error::{MyceliumError, Result};
-use mycelium_core::types::{
-	GroupInfo, KernelModule, ModuleState, SecurityStatus, UserInfo,
-};
+use mycelium_core::types::{GroupInfo, KernelModule, ModuleState, SecurityStatus, UserInfo};
 
 /// Read a null-terminated `PWSTR`, returning an empty string if null.
 fn pwstr_to_string(p: PWSTR) -> String {
@@ -55,7 +52,10 @@ fn get_group_members_api(group_name: &str) -> Vec<String> {
 	}
 
 	let members = unsafe {
-		std::slice::from_raw_parts(buf as *const LOCALGROUP_MEMBERS_INFO_3, entries_read as usize)
+		std::slice::from_raw_parts(
+			buf as *const LOCALGROUP_MEMBERS_INFO_3,
+			entries_read as usize,
+		)
 	};
 
 	let result: Vec<String> = members
@@ -148,9 +148,8 @@ pub fn list_users() -> Result<Vec<UserInfo>> {
 		});
 	}
 
-	let user_infos = unsafe {
-		std::slice::from_raw_parts(buf as *const USER_INFO_3, entries_read as usize)
-	};
+	let user_infos =
+		unsafe { std::slice::from_raw_parts(buf as *const USER_INFO_3, entries_read as usize) };
 
 	// Build group membership map
 	let groups_map = build_user_groups_map();
@@ -165,10 +164,7 @@ pub fn list_users() -> Result<Vec<UserInfo>> {
 			} else {
 				home_raw
 			};
-			let groups = groups_map
-				.get(&name)
-				.cloned()
-				.unwrap_or_default();
+			let groups = groups_map.get(&name).cloned().unwrap_or_default();
 
 			UserInfo {
 				name,
@@ -224,10 +220,7 @@ pub fn list_groups() -> Result<Vec<GroupInfo>> {
 				.into_iter()
 				.map(|m| {
 					// Normalize DOMAIN\User → User
-					m.rsplit('\\')
-						.next()
-						.unwrap_or(&m)
-						.to_string()
+					m.rsplit('\\').next().unwrap_or(&m).to_string()
 				})
 				.collect();
 
@@ -300,9 +293,7 @@ pub fn list_kernel_modules() -> Result<Vec<KernelModule>> {
 				.as_deref()
 				.map(|p| {
 					let expanded = expand_driver_path(p);
-					std::fs::metadata(&expanded)
-						.map(|m| m.len())
-						.unwrap_or(0)
+					std::fs::metadata(&expanded).map(|m| m.len()).unwrap_or(0)
 				})
 				.unwrap_or(0);
 
@@ -352,17 +343,15 @@ fn check_firewall_active() -> bool {
 }
 
 fn check_admin_enabled() -> bool {
-	let output = Command::new("net")
-		.args(["user", "Administrator"])
-		.output();
+	let output = Command::new("net").args(["user", "Administrator"]).output();
 
 	match output {
 		Ok(out) => {
 			let stdout = String::from_utf8_lossy(&out.stdout);
 			// "Account active" line -- "Yes" means enabled
-			stdout.lines().any(|line| {
-				line.contains("Account active") && line.contains("Yes")
-			})
+			stdout
+				.lines()
+				.any(|line| line.contains("Account active") && line.contains("Yes"))
 		}
 		Err(_) => false,
 	}

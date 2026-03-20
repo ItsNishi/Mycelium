@@ -25,8 +25,7 @@ pub fn list_interfaces() -> Result<Vec<NetworkInterface>> {
 		let entry = entry?;
 		let name = entry.file_name().to_string_lossy().to_string();
 
-		let mac = read_sys_net(&name, "address")
-			.filter(|a| a != "00:00:00:00:00:00");
+		let mac = read_sys_net(&name, "address").filter(|a| a != "00:00:00:00:00:00");
 
 		let mtu = read_sys_net(&name, "mtu")
 			.and_then(|s| s.parse().ok())
@@ -209,11 +208,7 @@ fn process_name_for_pid(pid: u32) -> Option<String> {
 		.map(|s| s.trim().to_string())
 }
 
-fn parse_proc_net_tcp(
-	path: &str,
-	protocol: Protocol,
-	out: &mut Vec<Connection>,
-) -> Result<()> {
+fn parse_proc_net_tcp(path: &str, protocol: Protocol, out: &mut Vec<Connection>) -> Result<()> {
 	let content = match fs::read_to_string(path) {
 		Ok(c) => c,
 		Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
@@ -248,11 +243,7 @@ fn parse_proc_net_tcp(
 	Ok(())
 }
 
-fn parse_proc_net_udp(
-	path: &str,
-	protocol: Protocol,
-	out: &mut Vec<Connection>,
-) -> Result<()> {
+fn parse_proc_net_udp(path: &str, protocol: Protocol, out: &mut Vec<Connection>) -> Result<()> {
 	let content = match fs::read_to_string(path) {
 		Ok(c) => c,
 		Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
@@ -319,7 +310,10 @@ pub fn list_open_ports() -> Result<Vec<OpenPort>> {
 	let connections = list_connections()?;
 	let mut ports: Vec<OpenPort> = connections
 		.into_iter()
-		.filter(|c| c.state == ConnectionState::Listen || matches!(c.protocol, Protocol::Udp | Protocol::Udp6))
+		.filter(|c| {
+			c.state == ConnectionState::Listen
+				|| matches!(c.protocol, Protocol::Udp | Protocol::Udp6)
+		})
 		.map(|c| OpenPort {
 			protocol: c.protocol,
 			address: c.local_address,
@@ -402,8 +396,7 @@ fn parse_nft_rules() -> Result<Vec<FirewallRule>> {
 				protocol: extract_word_after(trimmed, "ip protocol "),
 				source: extract_word_after(trimmed, "ip saddr "),
 				destination: extract_word_after(trimmed, "ip daddr "),
-				port: extract_word_after(trimmed, "dport ")
-					.and_then(|s| s.parse().ok()),
+				port: extract_word_after(trimmed, "dport ").and_then(|s| s.parse().ok()),
 				action,
 				comment: extract_quoted(trimmed, "comment "),
 			});
@@ -429,9 +422,7 @@ fn extract_quoted(line: &str, prefix: &str) -> Option<String> {
 	if let Some(stripped) = rest.strip_prefix('"') {
 		stripped.find('"').map(|end| stripped[..end].to_string())
 	} else {
-		rest.split_whitespace()
-			.next()
-			.map(|s| s.to_string())
+		rest.split_whitespace().next().map(|s| s.to_string())
 	}
 }
 
@@ -443,7 +434,9 @@ const MAX_COMMENT_LEN: usize = 256;
 /// Validate a firewall chain name: alphanumeric, underscore, hyphen only.
 fn validate_chain(chain: &str) -> Result<()> {
 	if chain.is_empty()
-		|| !chain.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+		|| !chain
+			.chars()
+			.all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
 	{
 		return Err(MyceliumError::ParseError(format!(
 			"invalid chain name: {chain}"
@@ -481,9 +474,9 @@ fn validate_address(addr: &str) -> Result<()> {
 
 	// CIDR prefix must be numeric and in range
 	if let Some(prefix) = cidr {
-		let bits: u8 = prefix.parse().map_err(|_| {
-			MyceliumError::ParseError(format!("invalid CIDR prefix: {addr}"))
-		})?;
+		let bits: u8 = prefix
+			.parse()
+			.map_err(|_| MyceliumError::ParseError(format!("invalid CIDR prefix: {addr}")))?;
 		let max = if ip_part.contains(':') { 128 } else { 32 };
 		if bits > max {
 			return Err(MyceliumError::ParseError(format!(
@@ -733,9 +726,8 @@ fn find_nft_chain_for_handle(handle: &str) -> Result<Option<String>> {
 }
 
 fn remove_nft_rule(rule_id: &str) -> Result<()> {
-	let chain = find_nft_chain_for_handle(rule_id)?.ok_or_else(|| {
-		MyceliumError::NotFound(format!("firewall rule handle {rule_id}"))
-	})?;
+	let chain = find_nft_chain_for_handle(rule_id)?
+		.ok_or_else(|| MyceliumError::NotFound(format!("firewall rule handle {rule_id}")))?;
 
 	let output = std::process::Command::new("nft")
 		.args([
@@ -779,18 +771,10 @@ fn remove_iptables_rule(rule_id: &str) -> Result<()> {
 	Ok(())
 }
 
-fn firewall_cmd_error(
-	cmd: &str,
-	stderr: &str,
-	output: &std::process::Output,
-) -> MyceliumError {
+fn firewall_cmd_error(cmd: &str, stderr: &str, output: &std::process::Output) -> MyceliumError {
 	let stderr = stderr.trim();
-	if stderr.contains("Permission denied")
-		|| stderr.contains("Operation not permitted")
-	{
-		MyceliumError::PermissionDenied(format!(
-			"{cmd} failed (run as root)"
-		))
+	if stderr.contains("Permission denied") || stderr.contains("Operation not permitted") {
+		MyceliumError::PermissionDenied(format!("{cmd} failed (run as root)"))
 	} else {
 		MyceliumError::OsError {
 			code: output.status.code().unwrap_or(-1),

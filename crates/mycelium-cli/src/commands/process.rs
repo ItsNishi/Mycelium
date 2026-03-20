@@ -263,12 +263,10 @@ impl TableDisplay for PeExport {
 
 fn print_pe_info(info: &PeInfo, format: OutputFormat) {
 	match format {
-		OutputFormat::Json => {
-			match serde_json::to_string_pretty(info) {
-				Ok(json) => println!("{json}"),
-				Err(e) => eprintln!("error serializing JSON: {e}"),
-			}
-		}
+		OutputFormat::Json => match serde_json::to_string_pretty(info) {
+			Ok(json) => println!("{json}"),
+			Err(e) => eprintln!("error serializing JSON: {e}"),
+		},
 		OutputFormat::Table => {
 			println!("Machine:        {}", info.machine);
 			println!("Characteristics: {}", info.characteristics.join(", "));
@@ -322,12 +320,10 @@ impl TableDisplay for TokenGroup {
 
 fn print_token_info(info: &TokenInfo, format: OutputFormat) {
 	match format {
-		OutputFormat::Json => {
-			match serde_json::to_string_pretty(info) {
-				Ok(json) => println!("{json}"),
-				Err(e) => eprintln!("error serializing JSON: {e}"),
-			}
-		}
+		OutputFormat::Json => match serde_json::to_string_pretty(info) {
+			Ok(json) => println!("{json}"),
+			Err(e) => eprintln!("error serializing JSON: {e}"),
+		},
 		OutputFormat::Table => {
 			println!("PID:              {}", info.pid);
 			println!("User:             {}", info.user);

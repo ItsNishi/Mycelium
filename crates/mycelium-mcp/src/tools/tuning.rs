@@ -30,7 +30,10 @@ pub struct SetRequest {
 	pub value: String,
 }
 
-pub async fn handle_get(svc: &MyceliumMcpService, req: KeyRequest) -> Result<CallToolResult, McpError> {
+pub async fn handle_get(
+	svc: &MyceliumMcpService,
+	req: KeyRequest,
+) -> Result<CallToolResult, McpError> {
 	use mycelium_core::policy::rule::ResourceContext;
 
 	let resource = format!("key:{}", req.key);
@@ -60,7 +63,10 @@ pub async fn handle_get(svc: &MyceliumMcpService, req: KeyRequest) -> Result<Cal
 	}
 }
 
-pub async fn handle_list(svc: &MyceliumMcpService, req: PrefixRequest) -> Result<CallToolResult, McpError> {
+pub async fn handle_list(
+	svc: &MyceliumMcpService,
+	req: PrefixRequest,
+) -> Result<CallToolResult, McpError> {
 	use mycelium_core::policy::rule::ResourceContext;
 
 	let resource = format!("prefix:{}", req.prefix);
@@ -68,7 +74,8 @@ pub async fn handle_list(svc: &MyceliumMcpService, req: PrefixRequest) -> Result
 		tunable_key: Some(req.prefix.clone()),
 		..Default::default()
 	};
-	if let Some(result) = svc.check_policy_with_context("tuning_list", Some(&resource), Some(&ctx)) {
+	if let Some(result) = svc.check_policy_with_context("tuning_list", Some(&resource), Some(&ctx))
+	{
 		return result;
 	}
 	if svc.is_dry_run() {
@@ -90,7 +97,10 @@ pub async fn handle_list(svc: &MyceliumMcpService, req: PrefixRequest) -> Result
 	}
 }
 
-pub async fn handle_set(svc: &MyceliumMcpService, req: SetRequest) -> Result<CallToolResult, McpError> {
+pub async fn handle_set(
+	svc: &MyceliumMcpService,
+	req: SetRequest,
+) -> Result<CallToolResult, McpError> {
 	use mycelium_core::policy::rule::ResourceContext;
 	use mycelium_core::types::TunableValue;
 

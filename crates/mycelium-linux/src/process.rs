@@ -2,8 +2,8 @@
 
 use mycelium_core::error::{MyceliumError, Result};
 use mycelium_core::types::{
-	HandleInfo, PrivilegeInfo, ProcessInfo, ProcessModule, ProcessResource,
-	ProcessState, Signal, ThreadInfo, TokenGroup, TokenInfo,
+	HandleInfo, PrivilegeInfo, ProcessInfo, ProcessModule, ProcessResource, ProcessState, Signal,
+	ThreadInfo, TokenGroup, TokenInfo,
 };
 use std::collections::HashMap;
 use std::fs;
@@ -167,10 +167,7 @@ fn build_process_info(pid: u32) -> Result<ProcessInfo> {
 	let fields = parse_stat(pid)?;
 	let uid = uid_for_pid(pid);
 
-	let ppid = fields
-		.get(3)
-		.and_then(|v| v.parse().ok())
-		.unwrap_or(0);
+	let ppid = fields.get(3).and_then(|v| v.parse().ok()).unwrap_or(0);
 	let state = fields
 		.get(2)
 		.map(|s| parse_state(s))
@@ -237,11 +234,10 @@ pub fn process_resources(pid: u32) -> Result<ProcessResource> {
 		.unwrap_or(0);
 
 	// I/O bytes from /proc/[pid]/io
-	let (read_bytes, write_bytes) =
-		fs::read_to_string(format!("/proc/{pid}/io"))
-			.ok()
-			.map(|s| parse_proc_io(&s))
-			.unwrap_or((0, 0));
+	let (read_bytes, write_bytes) = fs::read_to_string(format!("/proc/{pid}/io"))
+		.ok()
+		.map(|s| parse_proc_io(&s))
+		.unwrap_or((0, 0));
 
 	Ok(ProcessResource {
 		pid,
@@ -277,7 +273,9 @@ pub fn process_environment(pid: u32) -> Result<Vec<(String, String)>> {
 		.split('\0')
 		.filter(|s| !s.is_empty())
 		.filter_map(|entry| {
-			entry.split_once('=').map(|(k, v)| (k.to_string(), v.to_string()))
+			entry
+				.split_once('=')
+				.map(|(k, v)| (k.to_string(), v.to_string()))
 		})
 		.collect();
 
@@ -309,65 +307,61 @@ pub fn kill_process(pid: u32, signal: Signal) -> Result<()> {
 		Signal::Cont => nix::sys::signal::Signal::SIGCONT,
 	};
 
-	nix::sys::signal::kill(nix::unistd::Pid::from_raw(pid as i32), nix_sig).map_err(
-		|e| match e {
-			Errno::ESRCH => MyceliumError::NotFound(format!("process {pid}")),
-			Errno::EPERM => MyceliumError::PermissionDenied(format!(
-				"cannot signal process {pid}"
-			)),
-			_ => MyceliumError::OsError {
-				code: e as i32,
-				message: format!("failed to send {signal:?} to pid {pid}: {e}"),
-			},
+	nix::sys::signal::kill(nix::unistd::Pid::from_raw(pid as i32), nix_sig).map_err(|e| match e {
+		Errno::ESRCH => MyceliumError::NotFound(format!("process {pid}")),
+		Errno::EPERM => MyceliumError::PermissionDenied(format!("cannot signal process {pid}")),
+		_ => MyceliumError::OsError {
+			code: e as i32,
+			message: format!("failed to send {signal:?} to pid {pid}: {e}"),
 		},
-	)
+	})
 }
 
 // ---- Linux capabilities table ----
 // CAP_CHOWN (0) through CAP_CHECKPOINT_RESTORE (40)
 
 const CAPABILITY_NAMES: &[&str] = &[
-	"CAP_CHOWN",                  // 0
-	"CAP_DAC_OVERRIDE",           // 1
-	"CAP_DAC_READ_SEARCH",        // 2
-	"CAP_FOWNER",                 // 3
-	"CAP_FSETID",                 // 4
-	"CAP_KILL",                   // 5
-	"CAP_SETGID",                 // 6
-	"CAP_SETUID",                 // 7
-	"CAP_SETPCAP",                // 8
-	"CAP_LINUX_IMMUTABLE",        // 9
-	"CAP_NET_BIND_SERVICE",       // 10
-	"CAP_NET_BROADCAST",          // 11
-	"CAP_NET_ADMIN",              // 12
-	"CAP_NET_RAW",                // 13
-	"CAP_IPC_LOCK",               // 14
-	"CAP_IPC_OWNER",              // 15
-	"CAP_SYS_MODULE",             // 16
-	"CAP_SYS_RAWIO",              // 17
-	"CAP_SYS_CHROOT",             // 18
-	"CAP_SYS_PTRACE",             // 19
-	"CAP_SYS_PACCT",              // 20
-	"CAP_SYS_ADMIN",              // 21
-	"CAP_SYS_BOOT",               // 22
-	"CAP_SYS_NICE",               // 23
-	"CAP_SYS_RESOURCE",           // 24
-	"CAP_SYS_TIME",               // 25
-	"CAP_SYS_TTY_CONFIG",         // 26
-	"CAP_MKNOD",                  // 27
-	"CAP_LEASE",                  // 28
-	"CAP_AUDIT_WRITE",            // 29
-	"CAP_AUDIT_CONTROL",          // 30
-	"CAP_SETFCAP",                // 31
-	"CAP_MAC_OVERRIDE",           // 32
-	"CAP_MAC_ADMIN",              // 33
-	"CAP_SYSLOG",                 // 34
-	"CAP_WAKE_ALARM",             // 35
-	"CAP_BLOCK_SUSPEND",          // 36
-	"CAP_AUDIT_READ",             // 37
-	"CAP_PERFMON",                // 38
-	"CAP_BPF",                    // 39
-	"CAP_CHECKPOINT_RESTORE",     // 40
+	"CAP_CHOWN",              // 0
+	"CAP_DAC_OVERRIDE",       // 1
+	"CAP_DAC_READ_SEARCH",    // 2
+	"CAP_FOWNER",             // 3
+	"CAP_FSETID",             // 4
+	"CAP_KILL",               // 5
+	"CAP_SETGID",             // 6
+	"CAP_SETUID",             // 7
+	"CAP_SETPCAP",            // 8
+	"CAP_LINUX_IMMUTABLE",    // 9
+	"CAP_NET_BIND_SERVICE",   // 10
+	"CAP_NET_BROADCAST",      // 11
+	"CAP_NET_ADMIN",          // 12
+	"CAP_NET_RAW",            // 13
+	"CAP_IPC_LOCK",           // 14
+	"CAP_IPC_OWNER",          // 15
+	"CAP_SYS_MODULE",         // 16
+	"CAP_SYS_RAWIO",          // 17
+	"CAP_SYS_CHROOT",         // 18
+	"CAP_SYS_PTRACE",         // 19
+	"CAP_SYS_PACCT",          // 20
+	"CAP_SYS_ADMIN",          // 21
+	"CAP_SYS_BOOT",           // 22
+	"CAP_SYS_NICE",           // 23
+	"CAP_SYS_RESOURCE",       // 24
+	"CAP_SYS_TIME",           // 25
+	"CAP_SYS_TTY_CONFIG",     // 26
+	"CAP_MKNOD",              // 27
+	"CAP_LEASE",              // 28
+	"CAP_AUDIT_WRITE",        // 29
+	"CAP_AUDIT_CONTROL",      // 30
+	"CAP_SETFCAP",            // 31
+	"CAP_MAC_OVERRIDE",       // 32
+	"CAP_MAC_ADMIN",          // 33
+	"CAP_SYSLOG",             // 34
+	"CAP_WAKE_ALARM",         // 35
+	"CAP_BLOCK_SUSPEND",      // 36
+	"CAP_AUDIT_READ",         // 37
+	"CAP_PERFMON",            // 38
+	"CAP_BPF",                // 39
+	"CAP_CHECKPOINT_RESTORE", // 40
 ];
 
 /// Decode a capability hex bitmask into a set of bit indices.
@@ -433,7 +427,11 @@ pub fn list_process_threads(pid: u32) -> Result<Vec<ThreadInfo>> {
 	let mut threads = Vec::new();
 	for entry in entries {
 		let entry = entry?;
-		let Some(tid) = entry.file_name().to_str().and_then(|s| s.parse::<u32>().ok()) else {
+		let Some(tid) = entry
+			.file_name()
+			.to_str()
+			.and_then(|s| s.parse::<u32>().ok())
+		else {
 			continue;
 		};
 
@@ -443,11 +441,7 @@ pub fn list_process_threads(pid: u32) -> Result<Vec<ThreadInfo>> {
 			.map(|c| parse_thread_priority(&c, tid))
 			.unwrap_or(0);
 
-		threads.push(ThreadInfo {
-			tid,
-			pid,
-			priority,
-		});
+		threads.push(ThreadInfo { tid, pid, priority });
 
 		if threads.len() >= MAX_THREADS {
 			break;
@@ -491,11 +485,7 @@ pub fn list_process_modules(pid: u32) -> Result<Vec<ProcessModule>> {
 	let mut modules: Vec<ProcessModule> = module_map
 		.into_iter()
 		.map(|(path, (base, end))| {
-			let name = path
-				.rsplit('/')
-				.next()
-				.unwrap_or(&path)
-				.to_string();
+			let name = path.rsplit('/').next().unwrap_or(&path).to_string();
 			ProcessModule {
 				name,
 				path,
@@ -840,10 +830,7 @@ mod tests {
 
 	#[test]
 	fn test_parse_proc_io_non_numeric() {
-		assert_eq!(
-			parse_proc_io("read_bytes: abc\nwrite_bytes: def\n"),
-			(0, 0)
-		);
+		assert_eq!(parse_proc_io("read_bytes: abc\nwrite_bytes: def\n"), (0, 0));
 	}
 
 	// rss_bytes_from_stat tests

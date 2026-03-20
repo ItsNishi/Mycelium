@@ -7,14 +7,12 @@ use std::process::Command;
 
 use sysinfo::{Networks, ProcessRefreshKind, RefreshKind, System};
 use windows::Win32::NetworkManagement::IpHelper::{
-	ConvertInterfaceIndexToLuid, ConvertInterfaceLuidToNameW, FreeMibTable,
-	GetAdaptersAddresses, GetExtendedTcpTable, GetExtendedUdpTable, GetIpForwardTable2,
-	GAA_FLAG_SKIP_ANYCAST, GAA_FLAG_SKIP_DNS_SERVER, GAA_FLAG_SKIP_MULTICAST,
-	IP_ADAPTER_ADDRESSES_LH, IP_ADDRESS_PREFIX, MIB_IPFORWARD_TABLE2,
-	MIB_TCP6ROW_OWNER_PID, MIB_TCP6TABLE_OWNER_PID, MIB_TCPROW_OWNER_PID,
-	MIB_TCPTABLE_OWNER_PID, MIB_UDP6ROW_OWNER_PID, MIB_UDP6TABLE_OWNER_PID,
-	MIB_UDPROW_OWNER_PID, MIB_UDPTABLE_OWNER_PID, TCP_TABLE_OWNER_PID_ALL,
-	UDP_TABLE_OWNER_PID,
+	ConvertInterfaceIndexToLuid, ConvertInterfaceLuidToNameW, FreeMibTable, GAA_FLAG_SKIP_ANYCAST,
+	GAA_FLAG_SKIP_DNS_SERVER, GAA_FLAG_SKIP_MULTICAST, GetAdaptersAddresses, GetExtendedTcpTable,
+	GetExtendedUdpTable, GetIpForwardTable2, IP_ADAPTER_ADDRESSES_LH, IP_ADDRESS_PREFIX,
+	MIB_IPFORWARD_TABLE2, MIB_TCP6ROW_OWNER_PID, MIB_TCP6TABLE_OWNER_PID, MIB_TCPROW_OWNER_PID,
+	MIB_TCPTABLE_OWNER_PID, MIB_UDP6ROW_OWNER_PID, MIB_UDP6TABLE_OWNER_PID, MIB_UDPROW_OWNER_PID,
+	MIB_UDPTABLE_OWNER_PID, TCP_TABLE_OWNER_PID_ALL, UDP_TABLE_OWNER_PID,
 };
 use windows::Win32::Networking::WinSock::{
 	ADDRESS_FAMILY, AF_INET, AF_INET6, AF_UNSPEC, SOCKADDR_INET,
@@ -159,12 +157,7 @@ fn build_pid_name_map() -> HashMap<u32, String> {
 	);
 	sys.processes()
 		.iter()
-		.map(|(pid, proc)| {
-			(
-				pid.as_u32(),
-				proc.name().to_string_lossy().into_owned(),
-			)
-		})
+		.map(|(pid, proc)| (pid.as_u32(), proc.name().to_string_lossy().into_owned()))
 		.collect()
 }
 
@@ -191,7 +184,14 @@ fn tcp_state_from_dword(state: u32) -> ConnectionState {
 fn get_tcp4_connections(pid_names: &HashMap<u32, String>) -> Vec<Connection> {
 	let mut size = 0u32;
 	unsafe {
-		GetExtendedTcpTable(None, &mut size, false, AF_INET.0 as u32, TCP_TABLE_OWNER_PID_ALL, 0);
+		GetExtendedTcpTable(
+			None,
+			&mut size,
+			false,
+			AF_INET.0 as u32,
+			TCP_TABLE_OWNER_PID_ALL,
+			0,
+		);
 	}
 	if size == 0 {
 		return Vec::new();
@@ -213,36 +213,44 @@ fn get_tcp4_connections(pid_names: &HashMap<u32, String>) -> Vec<Connection> {
 	}
 
 	let table = unsafe { &*(buffer.as_ptr() as *const MIB_TCPTABLE_OWNER_PID) };
-	let rows = unsafe {
-		std::slice::from_raw_parts(table.table.as_ptr(), table.dwNumEntries as usize)
-	};
+	let rows =
+		unsafe { std::slice::from_raw_parts(table.table.as_ptr(), table.dwNumEntries as usize) };
 
-	rows.iter().map(|row: &MIB_TCPROW_OWNER_PID| {
-		let local_addr = Ipv4Addr::from(u32::from_be(row.dwLocalAddr));
-		let remote_addr = Ipv4Addr::from(u32::from_be(row.dwRemoteAddr));
-		let local_port = u16::from_be(row.dwLocalPort as u16);
-		let remote_port = u16::from_be(row.dwRemotePort as u16);
-		let pid = row.dwOwningPid;
-		let process_name = pid_names.get(&pid).cloned();
+	rows.iter()
+		.map(|row: &MIB_TCPROW_OWNER_PID| {
+			let local_addr = Ipv4Addr::from(u32::from_be(row.dwLocalAddr));
+			let remote_addr = Ipv4Addr::from(u32::from_be(row.dwRemoteAddr));
+			let local_port = u16::from_be(row.dwLocalPort as u16);
+			let remote_port = u16::from_be(row.dwRemotePort as u16);
+			let pid = row.dwOwningPid;
+			let process_name = pid_names.get(&pid).cloned();
 
-		Connection {
-			protocol: Protocol::Tcp,
-			local_address: local_addr.to_string(),
-			local_port,
-			remote_address: remote_addr.to_string(),
-			remote_port,
-			state: tcp_state_from_dword(row.dwState),
-			pid: Some(pid),
-			process_name,
-		}
-	}).collect()
+			Connection {
+				protocol: Protocol::Tcp,
+				local_address: local_addr.to_string(),
+				local_port,
+				remote_address: remote_addr.to_string(),
+				remote_port,
+				state: tcp_state_from_dword(row.dwState),
+				pid: Some(pid),
+				process_name,
+			}
+		})
+		.collect()
 }
 
 /// Get IPv6 TCP connections using `GetExtendedTcpTable`.
 fn get_tcp6_connections(pid_names: &HashMap<u32, String>) -> Vec<Connection> {
 	let mut size = 0u32;
 	unsafe {
-		GetExtendedTcpTable(None, &mut size, false, AF_INET6.0 as u32, TCP_TABLE_OWNER_PID_ALL, 0);
+		GetExtendedTcpTable(
+			None,
+			&mut size,
+			false,
+			AF_INET6.0 as u32,
+			TCP_TABLE_OWNER_PID_ALL,
+			0,
+		);
 	}
 	if size == 0 {
 		return Vec::new();
@@ -264,36 +272,44 @@ fn get_tcp6_connections(pid_names: &HashMap<u32, String>) -> Vec<Connection> {
 	}
 
 	let table = unsafe { &*(buffer.as_ptr() as *const MIB_TCP6TABLE_OWNER_PID) };
-	let rows = unsafe {
-		std::slice::from_raw_parts(table.table.as_ptr(), table.dwNumEntries as usize)
-	};
+	let rows =
+		unsafe { std::slice::from_raw_parts(table.table.as_ptr(), table.dwNumEntries as usize) };
 
-	rows.iter().map(|row: &MIB_TCP6ROW_OWNER_PID| {
-		let local_addr = Ipv6Addr::from(row.ucLocalAddr);
-		let remote_addr = Ipv6Addr::from(row.ucRemoteAddr);
-		let local_port = u16::from_be(row.dwLocalPort as u16);
-		let remote_port = u16::from_be(row.dwRemotePort as u16);
-		let pid = row.dwOwningPid;
-		let process_name = pid_names.get(&pid).cloned();
+	rows.iter()
+		.map(|row: &MIB_TCP6ROW_OWNER_PID| {
+			let local_addr = Ipv6Addr::from(row.ucLocalAddr);
+			let remote_addr = Ipv6Addr::from(row.ucRemoteAddr);
+			let local_port = u16::from_be(row.dwLocalPort as u16);
+			let remote_port = u16::from_be(row.dwRemotePort as u16);
+			let pid = row.dwOwningPid;
+			let process_name = pid_names.get(&pid).cloned();
 
-		Connection {
-			protocol: Protocol::Tcp6,
-			local_address: local_addr.to_string(),
-			local_port,
-			remote_address: remote_addr.to_string(),
-			remote_port,
-			state: tcp_state_from_dword(row.dwState),
-			pid: Some(pid),
-			process_name,
-		}
-	}).collect()
+			Connection {
+				protocol: Protocol::Tcp6,
+				local_address: local_addr.to_string(),
+				local_port,
+				remote_address: remote_addr.to_string(),
+				remote_port,
+				state: tcp_state_from_dword(row.dwState),
+				pid: Some(pid),
+				process_name,
+			}
+		})
+		.collect()
 }
 
 /// Get IPv4 UDP connections using `GetExtendedUdpTable`.
 fn get_udp4_connections(pid_names: &HashMap<u32, String>) -> Vec<Connection> {
 	let mut size = 0u32;
 	unsafe {
-		GetExtendedUdpTable(None, &mut size, false, AF_INET.0 as u32, UDP_TABLE_OWNER_PID, 0);
+		GetExtendedUdpTable(
+			None,
+			&mut size,
+			false,
+			AF_INET.0 as u32,
+			UDP_TABLE_OWNER_PID,
+			0,
+		);
 	}
 	if size == 0 {
 		return Vec::new();
@@ -315,34 +331,42 @@ fn get_udp4_connections(pid_names: &HashMap<u32, String>) -> Vec<Connection> {
 	}
 
 	let table = unsafe { &*(buffer.as_ptr() as *const MIB_UDPTABLE_OWNER_PID) };
-	let rows = unsafe {
-		std::slice::from_raw_parts(table.table.as_ptr(), table.dwNumEntries as usize)
-	};
+	let rows =
+		unsafe { std::slice::from_raw_parts(table.table.as_ptr(), table.dwNumEntries as usize) };
 
-	rows.iter().map(|row: &MIB_UDPROW_OWNER_PID| {
-		let local_addr = Ipv4Addr::from(u32::from_be(row.dwLocalAddr));
-		let local_port = u16::from_be(row.dwLocalPort as u16);
-		let pid = row.dwOwningPid;
-		let process_name = pid_names.get(&pid).cloned();
+	rows.iter()
+		.map(|row: &MIB_UDPROW_OWNER_PID| {
+			let local_addr = Ipv4Addr::from(u32::from_be(row.dwLocalAddr));
+			let local_port = u16::from_be(row.dwLocalPort as u16);
+			let pid = row.dwOwningPid;
+			let process_name = pid_names.get(&pid).cloned();
 
-		Connection {
-			protocol: Protocol::Udp,
-			local_address: local_addr.to_string(),
-			local_port,
-			remote_address: "*".to_string(),
-			remote_port: 0,
-			state: ConnectionState::Unknown,
-			pid: Some(pid),
-			process_name,
-		}
-	}).collect()
+			Connection {
+				protocol: Protocol::Udp,
+				local_address: local_addr.to_string(),
+				local_port,
+				remote_address: "*".to_string(),
+				remote_port: 0,
+				state: ConnectionState::Unknown,
+				pid: Some(pid),
+				process_name,
+			}
+		})
+		.collect()
 }
 
 /// Get IPv6 UDP connections using `GetExtendedUdpTable`.
 fn get_udp6_connections(pid_names: &HashMap<u32, String>) -> Vec<Connection> {
 	let mut size = 0u32;
 	unsafe {
-		GetExtendedUdpTable(None, &mut size, false, AF_INET6.0 as u32, UDP_TABLE_OWNER_PID, 0);
+		GetExtendedUdpTable(
+			None,
+			&mut size,
+			false,
+			AF_INET6.0 as u32,
+			UDP_TABLE_OWNER_PID,
+			0,
+		);
 	}
 	if size == 0 {
 		return Vec::new();
@@ -364,27 +388,28 @@ fn get_udp6_connections(pid_names: &HashMap<u32, String>) -> Vec<Connection> {
 	}
 
 	let table = unsafe { &*(buffer.as_ptr() as *const MIB_UDP6TABLE_OWNER_PID) };
-	let rows = unsafe {
-		std::slice::from_raw_parts(table.table.as_ptr(), table.dwNumEntries as usize)
-	};
+	let rows =
+		unsafe { std::slice::from_raw_parts(table.table.as_ptr(), table.dwNumEntries as usize) };
 
-	rows.iter().map(|row: &MIB_UDP6ROW_OWNER_PID| {
-		let local_addr = Ipv6Addr::from(row.ucLocalAddr);
-		let local_port = u16::from_be(row.dwLocalPort as u16);
-		let pid = row.dwOwningPid;
-		let process_name = pid_names.get(&pid).cloned();
+	rows.iter()
+		.map(|row: &MIB_UDP6ROW_OWNER_PID| {
+			let local_addr = Ipv6Addr::from(row.ucLocalAddr);
+			let local_port = u16::from_be(row.dwLocalPort as u16);
+			let pid = row.dwOwningPid;
+			let process_name = pid_names.get(&pid).cloned();
 
-		Connection {
-			protocol: Protocol::Udp6,
-			local_address: local_addr.to_string(),
-			local_port,
-			remote_address: "*".to_string(),
-			remote_port: 0,
-			state: ConnectionState::Unknown,
-			pid: Some(pid),
-			process_name,
-		}
-	}).collect()
+			Connection {
+				protocol: Protocol::Udp6,
+				local_address: local_addr.to_string(),
+				local_port,
+				remote_address: "*".to_string(),
+				remote_port: 0,
+				state: ConnectionState::Unknown,
+				pid: Some(pid),
+				process_name,
+			}
+		})
+		.collect()
 }
 
 /// List all active TCP/UDP connections using Win32 IP helper APIs.
@@ -411,7 +436,10 @@ fn interface_name_from_index(index: u32) -> String {
 		if ConvertInterfaceLuidToNameW(&luid, &mut name_buf).is_err() {
 			return format!("if{index}");
 		}
-		let len = name_buf.iter().position(|&c| c == 0).unwrap_or(name_buf.len());
+		let len = name_buf
+			.iter()
+			.position(|&c| c == 0)
+			.unwrap_or(name_buf.len());
 		String::from_utf16_lossy(&name_buf[..len])
 	}
 }
@@ -563,9 +591,7 @@ fn parse_first_port(s: &str) -> Option<u16> {
 		return None;
 	}
 	// Take the first port if comma-separated
-	s.split(',')
-		.next()
-		.and_then(|p| p.trim().parse().ok())
+	s.split(',').next().and_then(|p| p.trim().parse().ok())
 }
 
 /// Normalize a firewall address: "*" and "Any" become None.
@@ -579,18 +605,12 @@ fn normalize_address(s: &str) -> Option<String> {
 }
 
 pub fn list_firewall_rules() -> Result<Vec<FirewallRule>> {
-	let com = COMLibrary::new().map_err(|e| {
-		MyceliumError::OsError {
-			code: -1,
-			message: format!("COM init failed: {e}"),
-		}
+	let com = COMLibrary::new().map_err(|e| MyceliumError::OsError {
+		code: -1,
+		message: format!("COM init failed: {e}"),
 	})?;
 
-	let wmi = WMIConnection::with_namespace_path(
-		"ROOT\\StandardCimv2",
-		com,
-	)
-	.map_err(|e| {
+	let wmi = WMIConnection::with_namespace_path("ROOT\\StandardCimv2", com).map_err(|e| {
 		MyceliumError::OsError {
 			code: -1,
 			message: format!("WMI connection failed: {e}"),
@@ -608,11 +628,15 @@ pub fn list_firewall_rules() -> Result<Vec<FirewallRule>> {
 
 	// Query port and address filters
 	let port_filters: Vec<WmiFirewallPortFilter> = wmi
-		.raw_query("SELECT InstanceID, LocalPort, RemotePort, Protocol FROM MSFT_NetFirewallPortFilter")
+		.raw_query(
+			"SELECT InstanceID, LocalPort, RemotePort, Protocol FROM MSFT_NetFirewallPortFilter",
+		)
 		.unwrap_or_default();
 
 	let addr_filters: Vec<WmiFirewallAddressFilter> = wmi
-		.raw_query("SELECT InstanceID, LocalAddress, RemoteAddress FROM MSFT_NetFirewallAddressFilter")
+		.raw_query(
+			"SELECT InstanceID, LocalAddress, RemoteAddress FROM MSFT_NetFirewallAddressFilter",
+		)
 		.unwrap_or_default();
 
 	// Build lookup maps by InstanceID
@@ -715,10 +739,7 @@ pub fn add_firewall_rule(rule: &FirewallRule) -> Result<()> {
 		"firewall".to_string(),
 		"add".to_string(),
 		"rule".to_string(),
-		format!(
-			"name={}",
-			rule.comment.as_deref().unwrap_or(&rule.id)
-		),
+		format!("name={}", rule.comment.as_deref().unwrap_or(&rule.id)),
 		format!("dir={direction}"),
 		format!("action={action}"),
 	];
@@ -735,13 +756,14 @@ pub fn add_firewall_rule(rule: &FirewallRule) -> Result<()> {
 		args.push(format!("remoteip={src}"));
 	}
 
-	let output = Command::new("netsh")
-		.args(&args)
-		.output()
-		.map_err(|e| MyceliumError::OsError {
-			code: e.raw_os_error().unwrap_or(-1),
-			message: format!("failed to run netsh: {e}"),
-		})?;
+	let output =
+		Command::new("netsh")
+			.args(&args)
+			.output()
+			.map_err(|e| MyceliumError::OsError {
+				code: e.raw_os_error().unwrap_or(-1),
+				message: format!("failed to run netsh: {e}"),
+			})?;
 
 	if output.status.success() {
 		Ok(())
@@ -874,7 +896,10 @@ mod tests {
 
 	#[test]
 	fn test_normalize_address_real_ip() {
-		assert_eq!(normalize_address("192.168.1.1"), Some("192.168.1.1".to_string()));
+		assert_eq!(
+			normalize_address("192.168.1.1"),
+			Some("192.168.1.1".to_string())
+		);
 	}
 
 	#[test]
@@ -899,11 +924,17 @@ mod tests {
 
 	#[test]
 	fn test_normalize_address_cidr() {
-		assert_eq!(normalize_address("10.0.0.0/8"), Some("10.0.0.0/8".to_string()));
+		assert_eq!(
+			normalize_address("10.0.0.0/8"),
+			Some("10.0.0.0/8".to_string())
+		);
 	}
 
 	#[test]
 	fn test_normalize_address_whitespace() {
-		assert_eq!(normalize_address("  192.168.1.0/24  "), Some("192.168.1.0/24".to_string()));
+		assert_eq!(
+			normalize_address("  192.168.1.0/24  "),
+			Some("192.168.1.0/24".to_string())
+		);
 	}
 }

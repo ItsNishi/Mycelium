@@ -92,8 +92,7 @@ fn ipv6_net_event() {
 
 	// Connect to IPv6 loopback. This may fail if nothing listens, but the
 	// inet_sock_set_state tracepoint still fires on state transitions.
-	let _ = TcpStream::connect("[::1]:22")
-		.or_else(|_| TcpStream::connect("[::1]:80"));
+	let _ = TcpStream::connect("[::1]:22").or_else(|_| TcpStream::connect("[::1]:80"));
 	thread::sleep(Duration::from_millis(500));
 
 	let events = p.read_probe_events(&handle).unwrap();
@@ -101,7 +100,10 @@ fn ipv6_net_event() {
 	// If we got events, verify IPv6 addresses appear.
 	let has_v6 = events.iter().any(|e| e.details.contains("::"));
 	if !events.is_empty() {
-		assert!(has_v6, "IPv6 connection should produce event with '::' address");
+		assert!(
+			has_v6,
+			"IPv6 connection should produce event with '::' address"
+		);
 	}
 
 	p.detach_probe(handle).unwrap();
@@ -133,7 +135,11 @@ fn list_probes_while_attached() {
 	p.detach_probe(h2).unwrap();
 
 	let probes_after = p.list_probes().unwrap();
-	assert_eq!(probes_after.len(), 0, "should have 0 active probes after detach");
+	assert_eq!(
+		probes_after.len(),
+		0,
+		"should have 0 active probes after detach"
+	);
 }
 
 #[test]
@@ -177,7 +183,10 @@ fn event_fields_reasonable() {
 	let events = p.read_probe_events(&handle).unwrap();
 	for event in &events {
 		assert!(event.timestamp > 0, "timestamp should be non-zero");
-		assert!(!event.process_name.is_empty(), "process_name should not be empty");
+		assert!(
+			!event.process_name.is_empty(),
+			"process_name should not be empty"
+		);
 		assert_eq!(event.event_type, "syscall");
 		// Details should contain syscall_nr= and a resolved name.
 		assert!(

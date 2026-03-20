@@ -140,7 +140,10 @@ fn extract_maps_pathname(line: &str) -> Option<String> {
 	let _offset = parts.next()?;
 	let _dev = parts.next()?;
 	let _inode = parts.next()?;
-	parts.next().map(|s| s.trim().to_string()).filter(|s| !s.is_empty())
+	parts
+		.next()
+		.map(|s| s.trim().to_string())
+		.filter(|s| !s.is_empty())
 }
 
 // ---- Ptrace detection ----
@@ -278,11 +281,9 @@ mod tests {
 
 	#[test]
 	fn test_extract_maps_pathname_special() {
-		let line = "7ffd12345000-7ffd12366000 rw-p 00000000 00:00 0                          [stack]";
-		assert_eq!(
-			extract_maps_pathname(line),
-			Some("[stack]".to_string())
-		);
+		let line =
+			"7ffd12345000-7ffd12366000 rw-p 00000000 00:00 0                          [stack]";
+		assert_eq!(extract_maps_pathname(line), Some("[stack]".to_string()));
 	}
 
 	// parse_tracer_pid tests

@@ -3,10 +3,10 @@
 use rmcp::ErrorData as McpError;
 use rmcp::model::CallToolResult;
 
+use super::response::mapped_err;
 use super::response::{dry_run_text, err_text, ok_json};
 use crate::MyceliumMcpService;
 use crate::error_mapping::ErrorContext;
-use super::response::mapped_err;
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 pub struct DetectHooksRequest {
@@ -125,7 +125,10 @@ pub async fn handle_persistence(svc: &MyceliumMcpService) -> Result<CallToolResu
 	}
 }
 
-pub async fn handle_detect_hooks(svc: &MyceliumMcpService, req: DetectHooksRequest) -> Result<CallToolResult, McpError> {
+pub async fn handle_detect_hooks(
+	svc: &MyceliumMcpService,
+	req: DetectHooksRequest,
+) -> Result<CallToolResult, McpError> {
 	use mycelium_core::policy::rule::ResourceContext;
 
 	let resource = format!("pid:{}", req.pid);
@@ -133,7 +136,9 @@ pub async fn handle_detect_hooks(svc: &MyceliumMcpService, req: DetectHooksReque
 		pid: Some(req.pid),
 		..Default::default()
 	};
-	if let Some(result) = svc.check_policy_with_context("security_detect_hooks", Some(&resource), Some(&ctx)) {
+	if let Some(result) =
+		svc.check_policy_with_context("security_detect_hooks", Some(&resource), Some(&ctx))
+	{
 		return result;
 	}
 	if svc.is_dry_run() {

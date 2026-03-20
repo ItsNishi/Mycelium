@@ -11,7 +11,9 @@ use crate::policy::Role;
 
 /// Parse a TOML string into a Policy.
 pub fn parse_policy_toml(content: &str) -> Result<Policy, String> {
-	let table: toml::Value = content.parse().map_err(|e| format!("TOML parse error: {e}"))?;
+	let table: toml::Value = content
+		.parse()
+		.map_err(|e| format!("TOML parse error: {e}"))?;
 
 	let global = table.get("global");
 
@@ -29,11 +31,7 @@ pub fn parse_policy_toml(content: &str) -> Result<Policy, String> {
 	let global_rules = global
 		.and_then(|g| g.get("rules"))
 		.and_then(|v| v.as_array())
-		.map(|arr| {
-			arr.iter()
-				.filter_map(parse_rule)
-				.collect()
-		})
+		.map(|arr| arr.iter().filter_map(parse_rule).collect())
 		.unwrap_or_default();
 
 	let profiles_table = table.get("profiles");
@@ -66,9 +64,7 @@ pub fn parse_policy_toml(content: &str) -> Result<Policy, String> {
 pub fn load_policy(config_path: Option<&str>) -> Policy {
 	let path = config_path
 		.map(|p| p.to_string())
-		.or_else(|| {
-			dirs_path("mycelium/policy.toml")
-		});
+		.or_else(|| dirs_path("mycelium/policy.toml"));
 
 	match path {
 		Some(p) => match std::fs::read_to_string(&p) {
@@ -87,12 +83,10 @@ pub fn load_policy(config_path: Option<&str>) -> Policy {
 
 /// Resolve the XDG config path for a relative path.
 pub fn dirs_path(relative: &str) -> Option<String> {
-	let config_dir = std::env::var("XDG_CONFIG_HOME")
-		.ok()
-		.unwrap_or_else(|| {
-			let home = std::env::var("HOME").unwrap_or_default();
-			format!("{home}/.config")
-		});
+	let config_dir = std::env::var("XDG_CONFIG_HOME").ok().unwrap_or_else(|| {
+		let home = std::env::var("HOME").unwrap_or_default();
+		format!("{home}/.config")
+	});
 	let path = format!("{config_dir}/{relative}");
 	Some(path)
 }
