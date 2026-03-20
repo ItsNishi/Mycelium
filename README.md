@@ -4,6 +4,7 @@
 
 Like fungal mycelium threading through soil to surface nutrients, Mycelium threads through `/proc`, `/sys`, and OS APIs to surface clean, structured system data. AI agents connect via MCP and get typed JSON instead of parsing raw shell output.
 
+![CI](https://github.com/ItsNishi/Mycelium/actions/workflows/ci.yml/badge.svg)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 ![Rust](https://img.shields.io/badge/rust-2024_edition-orange)
 
