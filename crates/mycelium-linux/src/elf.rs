@@ -25,9 +25,7 @@ pub fn inspect_elf(target: &ElfTarget) -> Result<ElfInfo> {
 			fs::read_link(&exe_link)
 				.map_err(|e| match e.kind() {
 					std::io::ErrorKind::PermissionDenied => {
-						MyceliumError::PermissionDenied(format!(
-							"cannot read {exe_link}"
-						))
+						MyceliumError::PermissionDenied(format!("cannot read {exe_link}"))
 					}
 					std::io::ErrorKind::NotFound => {
 						MyceliumError::NotFound(format!("process {pid}"))
@@ -45,9 +43,7 @@ pub fn inspect_elf(target: &ElfTarget) -> Result<ElfInfo> {
 
 fn read_elf_file(path: &str) -> Result<Vec<u8>> {
 	let metadata = fs::metadata(path).map_err(|e| match e.kind() {
-		std::io::ErrorKind::NotFound => {
-			MyceliumError::NotFound(format!("file not found: {path}"))
-		}
+		std::io::ErrorKind::NotFound => MyceliumError::NotFound(format!("file not found: {path}")),
 		std::io::ErrorKind::PermissionDenied => {
 			MyceliumError::PermissionDenied(format!("cannot read {path}"))
 		}
@@ -65,9 +61,8 @@ fn read_elf_file(path: &str) -> Result<Vec<u8>> {
 }
 
 fn parse_elf(data: &[u8], path: &str) -> Result<ElfInfo> {
-	let elf = goblin::elf::Elf::parse(data).map_err(|e| {
-		MyceliumError::ParseError(format!("not a valid ELF file ({path}): {e}"))
-	})?;
+	let elf = goblin::elf::Elf::parse(data)
+		.map_err(|e| MyceliumError::ParseError(format!("not a valid ELF file ({path}): {e}")))?;
 
 	let header = &elf.header;
 
@@ -187,11 +182,7 @@ fn parse_sections(elf: &goblin::elf::Elf) -> Vec<ElfSection> {
 		.iter()
 		.take(MAX_SECTIONS)
 		.map(|sh| {
-			let name = elf
-				.shdr_strtab
-				.get_at(sh.sh_name)
-				.unwrap_or("")
-				.to_string();
+			let name = elf.shdr_strtab.get_at(sh.sh_name).unwrap_or("").to_string();
 			ElfSection {
 				name,
 				section_type: section_type_name(sh.sh_type),
@@ -263,12 +254,7 @@ fn parse_dynamic_symbols(elf: &goblin::elf::Elf) -> Vec<ElfSymbol> {
 				Some("UND".to_string())
 			} else if sym.st_shndx < elf.section_headers.len() {
 				let sh = &elf.section_headers[sym.st_shndx];
-				Some(
-					elf.shdr_strtab
-						.get_at(sh.sh_name)
-						.unwrap_or("")
-						.to_string(),
-				)
+				Some(elf.shdr_strtab.get_at(sh.sh_name).unwrap_or("").to_string())
 			} else {
 				None
 			};

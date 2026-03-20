@@ -275,12 +275,11 @@ fn pattern_to_bytes(pattern: &SearchPattern) -> (Vec<u8>, Option<Vec<u8>>) {
 	match pattern {
 		SearchPattern::Bytes(b) => (b.clone(), None),
 		SearchPattern::Utf8(s) => (s.as_bytes().to_vec(), None),
-		SearchPattern::Utf16(s) => {
-			(s.encode_utf16().flat_map(|c| c.to_le_bytes()).collect(), None)
-		}
-		SearchPattern::MaskedBytes { pattern, mask } => {
-			(pattern.clone(), Some(mask.clone()))
-		}
+		SearchPattern::Utf16(s) => (
+			s.encode_utf16().flat_map(|c| c.to_le_bytes()).collect(),
+			None,
+		),
+		SearchPattern::MaskedBytes { pattern, mask } => (pattern.clone(), Some(mask.clone())),
 	}
 }
 
@@ -288,11 +287,7 @@ fn pattern_to_bytes(pattern: &SearchPattern) -> (Vec<u8>, Option<Vec<u8>>) {
 ///
 /// When `mask` is `None`, performs exact matching (fast path).
 /// When `mask` is `Some`, byte `i` matches if `(h & m) == (n & m)`.
-fn find_all_occurrences(
-	haystack: &[u8],
-	needle: &[u8],
-	mask: Option<&[u8]>,
-) -> Vec<usize> {
+fn find_all_occurrences(haystack: &[u8], needle: &[u8], mask: Option<&[u8]>) -> Vec<usize> {
 	if needle.is_empty() || haystack.len() < needle.len() {
 		return Vec::new();
 	}

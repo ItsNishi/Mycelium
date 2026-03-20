@@ -307,10 +307,11 @@ pub async fn handle_search(
 ///
 /// Returns `(bytes, mask)`. If no wildcards are present, mask is `None`.
 /// Wildcard bytes get mask `0x00`, concrete bytes get mask `0xFF`.
-fn hex_decode_masked(
-	s: &str,
-) -> std::result::Result<(Vec<u8>, Option<Vec<u8>>), String> {
-	let s = s.strip_prefix("0x").or_else(|| s.strip_prefix("0X")).unwrap_or(s);
+fn hex_decode_masked(s: &str) -> std::result::Result<(Vec<u8>, Option<Vec<u8>>), String> {
+	let s = s
+		.strip_prefix("0x")
+		.or_else(|| s.strip_prefix("0X"))
+		.unwrap_or(s);
 	if !s.len().is_multiple_of(2) {
 		return Err(format!("hex string has odd length: {}", s.len()));
 	}

@@ -224,9 +224,7 @@ fn check_firewall_active() -> bool {
 		// lines to detect actual rules rather than relying on a fragile total.
 		return stdout.lines().any(|line| {
 			let trimmed = line.trim();
-			!trimmed.is_empty()
-				&& !trimmed.starts_with("Chain ")
-				&& !trimmed.starts_with("target")
+			!trimmed.is_empty() && !trimmed.starts_with("Chain ") && !trimmed.starts_with("target")
 		});
 	}
 

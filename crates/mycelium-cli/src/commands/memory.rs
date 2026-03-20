@@ -191,9 +191,7 @@ impl MemoryCmd {
 				let pattern = if let Some(h) = hex {
 					match hex_decode_masked(h) {
 						Ok((bytes, None)) => SearchPattern::Bytes(bytes),
-						Ok((pattern, Some(mask))) => {
-							SearchPattern::MaskedBytes { pattern, mask }
-						}
+						Ok((pattern, Some(mask))) => SearchPattern::MaskedBytes { pattern, mask },
 						Err(e) => {
 							eprintln!("error: {e}");
 							return;
