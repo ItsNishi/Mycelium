@@ -7,7 +7,7 @@ Like fungal mycelium threading through soil to surface nutrients, Mycelium threa
 ![License](https://img.shields.io/badge/license-MIT-blue)
 ![Rust](https://img.shields.io/badge/rust-2024_edition-orange)
 
-> **Note:** This is a personal learning project. I built Mycelium to deepen my understanding of Rust, systems programming, eBPF, and cross-platform OS internals. Contributions and feedback are welcome, but expect rough edges.
+> **Note:** This is a personal learning project built for reverse engineering and educational purposes. I built Mycelium to deepen my understanding of Rust, systems programming, eBPF, and cross-platform OS internals. Features like process memory access, hook detection, persistence scanning, and eBPF tracing exist for learning and security research -- not for malicious use. Contributions and feedback are welcome, but expect rough edges.
 
 ---
 
