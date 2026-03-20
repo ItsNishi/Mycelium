@@ -788,7 +788,7 @@ Derives `Default` (all fields `None`).
 
 **Module:** `types::probe`
 
-*Future -- Phase 5. Types are defined but not yet used by any backend.*
+*Implemented in Phase 6. Used by eBPF probes on Linux via the `ProbePlatform` trait.*
 
 ### ProbeHandle
 
