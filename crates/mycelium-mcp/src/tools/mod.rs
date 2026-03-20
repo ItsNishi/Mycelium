@@ -108,6 +108,16 @@ impl MyceliumMcpService {
 	}
 
 	#[tool(
+		description = "Parse ELF headers of a process or file. Returns sections, symbols, dynamic libraries."
+	)]
+	async fn process_elf_inspect(
+		&self,
+		Parameters(req): Parameters<process::ElfInspectRequest>,
+	) -> Result<CallToolResult, McpError> {
+		process::handle_elf_inspect(self, req).await
+	}
+
+	#[tool(
 		description = "Inspect process token security details (integrity, groups, elevation, impersonation)"
 	)]
 	async fn process_token(
@@ -156,7 +166,9 @@ impl MyceliumMcpService {
 		memory::handle_write(self, req).await
 	}
 
-	#[tool(description = "Search process memory for byte patterns, UTF-8 or UTF-16 strings")]
+	#[tool(
+		description = "Search process memory for byte patterns (with optional ?? wildcards), UTF-8 or UTF-16 strings"
+	)]
 	async fn memory_search(
 		&self,
 		Parameters(req): Parameters<memory::MemorySearchRequest>,

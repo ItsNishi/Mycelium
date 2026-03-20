@@ -4,6 +4,43 @@ use mycelium_core::types::{
 	MemoryInfo, MemoryRegion, MemorySearchOptions, ProcessMemory, SearchPattern,
 };
 
+/// Decode a hex string that may contain `??` wildcard bytes.
+///
+/// Returns `(bytes, mask)`. If no wildcards are present, mask is `None`.
+fn hex_decode_masked(s: &str) -> Result<(Vec<u8>, Option<Vec<u8>>), String> {
+	let s = s
+		.strip_prefix("0x")
+		.or_else(|| s.strip_prefix("0X"))
+		.unwrap_or(s);
+	if !s.len().is_multiple_of(2) {
+		return Err(format!("hex string has odd length: {}", s.len()));
+	}
+
+	let mut bytes = Vec::with_capacity(s.len() / 2);
+	let mut mask = Vec::with_capacity(s.len() / 2);
+	let mut has_wildcards = false;
+
+	for i in (0..s.len()).step_by(2) {
+		let pair = &s[i..i + 2];
+		if pair == "??" {
+			bytes.push(0x00);
+			mask.push(0x00);
+			has_wildcards = true;
+		} else {
+			let byte = u8::from_str_radix(pair, 16)
+				.map_err(|e| format!("invalid hex at position {i}: {e}"))?;
+			bytes.push(byte);
+			mask.push(0xFF);
+		}
+	}
+
+	if has_wildcards {
+		Ok((bytes, Some(mask)))
+	} else {
+		Ok((bytes, None))
+	}
+}
+
 use crate::output::*;
 
 #[derive(Subcommand)]
@@ -42,7 +79,7 @@ pub enum MemoryCmd {
 	Search {
 		/// Process ID
 		pid: u32,
-		/// Hex pattern (e.g. "4d5a9000")
+		/// Hex pattern with optional ?? wildcards (e.g. "4d5a??00", "488B????8905")
 		#[arg(long)]
 		hex: Option<String>,
 		/// UTF-8 string pattern
@@ -152,8 +189,11 @@ impl MemoryCmd {
 				}
 
 				let pattern = if let Some(h) = hex {
-					match hex_decode(h) {
-						Ok(bytes) => SearchPattern::Bytes(bytes),
+					match hex_decode_masked(h) {
+						Ok((bytes, None)) => SearchPattern::Bytes(bytes),
+						Ok((pattern, Some(mask))) => {
+							SearchPattern::MaskedBytes { pattern, mask }
+						}
 						Err(e) => {
 							eprintln!("error: {e}");
 							return;
@@ -404,5 +444,38 @@ mod tests {
 	#[test]
 	fn test_hex_decode_empty() {
 		assert_eq!(hex_decode("").unwrap(), Vec::<u8>::new());
+	}
+
+	// hex_decode_masked tests
+
+	#[test]
+	fn test_hex_decode_masked_no_wildcards() {
+		let (bytes, mask) = hex_decode_masked("4141ff00").unwrap();
+		assert_eq!(bytes, vec![0x41, 0x41, 0xff, 0x00]);
+		assert!(mask.is_none());
+	}
+
+	#[test]
+	fn test_hex_decode_masked_with_wildcards() {
+		let (bytes, mask) = hex_decode_masked("48??8B??").unwrap();
+		assert_eq!(bytes, vec![0x48, 0x00, 0x8B, 0x00]);
+		assert_eq!(mask.unwrap(), vec![0xFF, 0x00, 0xFF, 0x00]);
+	}
+
+	#[test]
+	fn test_hex_decode_masked_0x_prefix() {
+		let (bytes, mask) = hex_decode_masked("0x48??").unwrap();
+		assert_eq!(bytes, vec![0x48, 0x00]);
+		assert_eq!(mask.unwrap(), vec![0xFF, 0x00]);
+	}
+
+	#[test]
+	fn test_hex_decode_masked_odd_length() {
+		assert!(hex_decode_masked("4?1").is_err());
+	}
+
+	#[test]
+	fn test_hex_decode_masked_invalid_chars() {
+		assert!(hex_decode_masked("zz00").is_err());
 	}
 }

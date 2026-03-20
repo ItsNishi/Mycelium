@@ -32,6 +32,10 @@ pub enum SearchPattern {
 	Utf8(String),
 	/// UTF-16LE string.
 	Utf16(String),
+	/// Raw bytes with a per-byte mask for wildcard matching.
+	/// Mask byte `0xFF` = exact match, `0x00` = wildcard (any byte).
+	/// Pattern and mask must be the same length.
+	MaskedBytes { pattern: Vec<u8>, mask: Vec<u8> },
 }
 
 /// A single match found during memory search.

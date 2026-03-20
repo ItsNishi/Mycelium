@@ -413,30 +413,65 @@ pub fn protect_process_memory(
 	Ok(protection_flags_to_string(old_protect))
 }
 
-/// Convert a `SearchPattern` to raw bytes for searching.
-fn pattern_to_bytes(pattern: &SearchPattern) -> Vec<u8> {
+/// Convert a `SearchPattern` to raw bytes and an optional mask for matching.
+///
+/// Returns `(needle, mask)`. When `mask` is `None`, use exact byte matching.
+/// When `mask` is `Some`, byte `i` matches if `(haystack[i] & mask[i]) == (needle[i] & mask[i])`.
+fn pattern_to_bytes(pattern: &SearchPattern) -> (Vec<u8>, Option<Vec<u8>>) {
 	match pattern {
-		SearchPattern::Bytes(v) => v.clone(),
-		SearchPattern::Utf8(s) => s.as_bytes().to_vec(),
-		SearchPattern::Utf16(s) => s.encode_utf16().flat_map(|c| c.to_le_bytes()).collect(),
+		SearchPattern::Bytes(v) => (v.clone(), None),
+		SearchPattern::Utf8(s) => (s.as_bytes().to_vec(), None),
+		SearchPattern::Utf16(s) => {
+			(s.encode_utf16().flat_map(|c| c.to_le_bytes()).collect(), None)
+		}
+		SearchPattern::MaskedBytes { pattern, mask } => {
+			(pattern.clone(), Some(mask.clone()))
+		}
 	}
 }
 
 /// Find all occurrences of `needle` in `haystack`, returning byte offsets.
-fn find_all_occurrences(haystack: &[u8], needle: &[u8]) -> Vec<usize> {
+///
+/// When `mask` is `None`, performs exact matching (fast path).
+/// When `mask` is `Some`, byte `i` matches if `(h & m) == (n & m)`.
+fn find_all_occurrences(
+	haystack: &[u8],
+	needle: &[u8],
+	mask: Option<&[u8]>,
+) -> Vec<usize> {
 	if needle.is_empty() || needle.len() > haystack.len() {
 		return Vec::new();
 	}
 	let mut positions = Vec::new();
-	let mut i = 0;
-	while i <= haystack.len() - needle.len() {
-		if haystack[i..i + needle.len()] == *needle {
-			positions.push(i);
-			i += 1; // allow overlapping matches
-		} else {
-			i += 1;
+
+	match mask {
+		None => {
+			let mut i = 0;
+			while i <= haystack.len() - needle.len() {
+				if haystack[i..i + needle.len()] == *needle {
+					positions.push(i);
+				}
+				i += 1;
+			}
+		}
+		Some(m) => {
+			let len = needle.len();
+			let end = haystack.len() - len;
+			for i in 0..=end {
+				let mut matched = true;
+				for j in 0..len {
+					if (haystack[i + j] & m[j]) != (needle[j] & m[j]) {
+						matched = false;
+						break;
+					}
+				}
+				if matched {
+					positions.push(i);
+				}
+			}
 		}
 	}
+
 	positions
 }
 
@@ -490,11 +525,18 @@ pub fn search_process_memory(
 	pattern: &SearchPattern,
 	options: &MemorySearchOptions,
 ) -> Result<Vec<MemoryMatch>> {
-	let needle = pattern_to_bytes(pattern);
+	let (needle, mask) = pattern_to_bytes(pattern);
 	if needle.is_empty() {
 		return Err(MyceliumError::Unsupported(
 			"search pattern must not be empty".to_string(),
 		));
+	}
+	if let Some(ref m) = mask {
+		if m.len() != needle.len() {
+			return Err(MyceliumError::ParseError(
+				"mask length must equal pattern length".into(),
+			));
+		}
 	}
 
 	let max_matches = options.max_matches.min(MAX_SEARCH_MATCHES);
@@ -587,7 +629,7 @@ pub fn search_process_memory(
 
 				buffer.truncate(bytes_read);
 
-				let positions = find_all_occurrences(&buffer, &needle);
+				let positions = find_all_occurrences(&buffer, &needle, mask.as_deref());
 
 				for pos in positions {
 					if matches.len() >= max_matches {

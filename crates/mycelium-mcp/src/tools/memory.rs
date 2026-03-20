@@ -180,8 +180,8 @@ pub async fn handle_write(
 		return dry_run_text("memory_write");
 	}
 
-	let data = match hex_decode(&req.hex_data) {
-		Ok(d) => d,
+	let data = match hex_decode_masked(&req.hex_data) {
+		Ok((d, _)) => d,
 		Err(msg) => return err_text(&msg),
 	};
 
@@ -211,8 +211,10 @@ pub struct MemorySearchRequest {
 	/// Process ID to search
 	#[schemars(description = "Process ID to search")]
 	pub pid: u32,
-	/// Hex-encoded byte pattern (e.g. "4d5a9000")
-	#[schemars(description = "Hex-encoded byte pattern to search for (e.g. \"4d5a9000\")")]
+	/// Hex-encoded byte pattern, supports ?? wildcards (e.g. "4d5a??00", "488B????8905")
+	#[schemars(
+		description = "Hex-encoded byte pattern to search for. Use ?? for wildcard bytes (e.g. \"488B????8905\")"
+	)]
 	pub hex_pattern: Option<String>,
 	/// UTF-8 string to search for
 	#[schemars(description = "UTF-8 string to search for")]
@@ -263,8 +265,9 @@ pub async fn handle_search(
 	}
 
 	let pattern = if let Some(hex) = &req.hex_pattern {
-		match hex_decode(hex) {
-			Ok(bytes) => SearchPattern::Bytes(bytes),
+		match hex_decode_masked(hex) {
+			Ok((bytes, None)) => SearchPattern::Bytes(bytes),
+			Ok((pattern, Some(mask))) => SearchPattern::MaskedBytes { pattern, mask },
 			Err(msg) => return err_text(&msg),
 		}
 	} else if let Some(utf8) = &req.utf8_pattern {
@@ -300,19 +303,41 @@ pub async fn handle_search(
 	}
 }
 
-/// Decode a hex string (e.g. "4141ff00") into bytes.
-fn hex_decode(s: &str) -> std::result::Result<Vec<u8>, String> {
-	let s = s.strip_prefix("0x").unwrap_or(s);
+/// Decode a hex string that may contain `??` wildcard bytes.
+///
+/// Returns `(bytes, mask)`. If no wildcards are present, mask is `None`.
+/// Wildcard bytes get mask `0x00`, concrete bytes get mask `0xFF`.
+fn hex_decode_masked(
+	s: &str,
+) -> std::result::Result<(Vec<u8>, Option<Vec<u8>>), String> {
+	let s = s.strip_prefix("0x").or_else(|| s.strip_prefix("0X")).unwrap_or(s);
 	if !s.len().is_multiple_of(2) {
 		return Err(format!("hex string has odd length: {}", s.len()));
 	}
-	(0..s.len())
-		.step_by(2)
-		.map(|i| {
-			u8::from_str_radix(&s[i..i + 2], 16)
-				.map_err(|e| format!("invalid hex at position {i}: {e}"))
-		})
-		.collect()
+
+	let mut bytes = Vec::with_capacity(s.len() / 2);
+	let mut mask = Vec::with_capacity(s.len() / 2);
+	let mut has_wildcards = false;
+
+	for i in (0..s.len()).step_by(2) {
+		let pair = &s[i..i + 2];
+		if pair == "??" {
+			bytes.push(0x00);
+			mask.push(0x00);
+			has_wildcards = true;
+		} else {
+			let byte = u8::from_str_radix(pair, 16)
+				.map_err(|e| format!("invalid hex at position {i}: {e}"))?;
+			bytes.push(byte);
+			mask.push(0xFF);
+		}
+	}
+
+	if has_wildcards {
+		Ok((bytes, Some(mask)))
+	} else {
+		Ok((bytes, None))
+	}
 }
 
 #[cfg(test)]
@@ -320,25 +345,40 @@ mod tests {
 	use super::*;
 
 	#[test]
-	fn test_hex_decode_normal() {
-		assert_eq!(
-			hex_decode("4141ff00").unwrap(),
-			vec![0x41, 0x41, 0xff, 0x00]
-		);
+	fn test_hex_decode_masked_normal() {
+		let (bytes, mask) = hex_decode_masked("4141ff00").unwrap();
+		assert_eq!(bytes, vec![0x41, 0x41, 0xff, 0x00]);
+		assert!(mask.is_none());
 	}
 
 	#[test]
-	fn test_hex_decode_0x_prefix() {
-		assert_eq!(hex_decode("0x4141").unwrap(), vec![0x41, 0x41]);
+	fn test_hex_decode_masked_0x_prefix() {
+		let (bytes, mask) = hex_decode_masked("0x4141").unwrap();
+		assert_eq!(bytes, vec![0x41, 0x41]);
+		assert!(mask.is_none());
 	}
 
 	#[test]
-	fn test_hex_decode_odd_length() {
-		assert!(hex_decode("414").is_err());
+	fn test_hex_decode_masked_with_wildcards() {
+		let (bytes, mask) = hex_decode_masked("48??8B??").unwrap();
+		assert_eq!(bytes, vec![0x48, 0x00, 0x8B, 0x00]);
+		assert_eq!(mask.unwrap(), vec![0xFF, 0x00, 0xFF, 0x00]);
 	}
 
 	#[test]
-	fn test_hex_decode_invalid_chars() {
-		assert!(hex_decode("gg00").is_err());
+	fn test_hex_decode_masked_all_wildcards() {
+		let (bytes, mask) = hex_decode_masked("??????").unwrap();
+		assert_eq!(bytes, vec![0x00, 0x00, 0x00]);
+		assert_eq!(mask.unwrap(), vec![0x00, 0x00, 0x00]);
+	}
+
+	#[test]
+	fn test_hex_decode_masked_odd_length() {
+		assert!(hex_decode_masked("414").is_err());
+	}
+
+	#[test]
+	fn test_hex_decode_masked_invalid_chars() {
+		assert!(hex_decode_masked("gg00").is_err());
 	}
 }

@@ -1,8 +1,8 @@
 use clap::{Subcommand, ValueEnum};
 use mycelium_core::platform::Platform;
 use mycelium_core::types::{
-	HandleInfo, PeExport, PeImport, PeInfo, PeSection, PeTarget, PrivilegeInfo, ProcessInfo,
-	ProcessResource, Signal, TokenGroup, TokenInfo,
+	ElfInfo, ElfSection, ElfSymbol, ElfTarget, HandleInfo, PeExport, PeImport, PeInfo, PeSection,
+	PeTarget, PrivilegeInfo, ProcessInfo, ProcessResource, Signal, TokenGroup, TokenInfo,
 };
 
 use crate::output::*;
@@ -80,6 +80,15 @@ pub enum ProcessCmd {
 		#[arg(long)]
 		path: Option<String>,
 	},
+	/// Parse ELF headers of a process or file
+	Elf {
+		/// Process ID (mutually exclusive with --path)
+		#[arg(conflicts_with = "path")]
+		pid: Option<u32>,
+		/// Path to an ELF file (mutually exclusive with pid)
+		#[arg(long)]
+		path: Option<String>,
+	},
 	/// Inspect process token security details
 	Token {
 		/// Process ID
@@ -132,6 +141,20 @@ impl ProcessCmd {
 				};
 				match platform.inspect_pe(&target) {
 					Ok(info) => print_pe_info(&info, format),
+					Err(e) => eprintln!("error: {e}"),
+				}
+			}
+			Self::Elf { pid, path } => {
+				let target = match (pid, path) {
+					(Some(p), None) => ElfTarget::Pid(*p),
+					(None, Some(p)) => ElfTarget::Path(p.clone()),
+					_ => {
+						eprintln!("error: exactly one of <PID> or --path must be provided");
+						return;
+					}
+				};
+				match platform.inspect_elf(&target) {
+					Ok(info) => print_elf_info(&info, format),
 					Err(e) => eprintln!("error: {e}"),
 				}
 			}
@@ -350,6 +373,90 @@ fn print_token_info(info: &TokenInfo, format: OutputFormat) {
 				PrivilegeInfo::print_header();
 				for p in &info.privileges {
 					p.print_row();
+				}
+			}
+		}
+	}
+}
+
+impl TableDisplay for ElfSection {
+	fn print_header() {
+		println!(
+			"{:<20} {:<12} {:>12} {:>12} {:>12} FLAGS",
+			"NAME", "TYPE", "ADDR", "OFFSET", "SIZE"
+		);
+	}
+
+	fn print_row(&self) {
+		println!(
+			"{:<20} {:<12} 0x{:08x} 0x{:08x} {:>12} {}",
+			truncate(&self.name, 20),
+			self.section_type,
+			self.address,
+			self.offset,
+			self.size,
+			self.flags.join(","),
+		);
+	}
+}
+
+impl TableDisplay for ElfSymbol {
+	fn print_header() {
+		println!(
+			"{:<40} {:>12} {:>8} {:<8} {:<8} {:<10} SECTION",
+			"NAME", "VALUE", "SIZE", "TYPE", "BIND", "VIS"
+		);
+	}
+
+	fn print_row(&self) {
+		println!(
+			"{:<40} 0x{:08x} {:>8} {:<8} {:<8} {:<10} {}",
+			truncate(&self.name, 40),
+			self.value,
+			self.size,
+			self.symbol_type,
+			self.binding,
+			self.visibility,
+			self.section.as_deref().unwrap_or(""),
+		);
+	}
+}
+
+fn print_elf_info(info: &ElfInfo, format: OutputFormat) {
+	match format {
+		OutputFormat::Json => match serde_json::to_string_pretty(info) {
+			Ok(json) => println!("{json}"),
+			Err(e) => eprintln!("error serializing JSON: {e}"),
+		},
+		OutputFormat::Table => {
+			println!("Class:          {}", info.class);
+			println!("Endianness:     {}", info.endianness);
+			println!("OS/ABI:         {}", info.os_abi);
+			println!("Type:           {}", info.elf_type);
+			println!("Machine:        {}", info.machine);
+			println!("Entry Point:    0x{:x}", info.entry_point);
+			if let Some(ref interp) = info.interpreter {
+				println!("Interpreter:    {interp}");
+			}
+			println!();
+			println!("Sections ({}):", info.sections.len());
+			if !info.sections.is_empty() {
+				ElfSection::print_header();
+				for s in &info.sections {
+					s.print_row();
+				}
+			}
+			println!();
+			println!("Dynamic Libraries ({}):", info.dynamic_libs.len());
+			for lib in &info.dynamic_libs {
+				println!("  {lib}");
+			}
+			println!();
+			println!("Dynamic Symbols ({}):", info.symbols.len());
+			if !info.symbols.is_empty() {
+				ElfSymbol::print_header();
+				for s in &info.symbols {
+					s.print_row();
 				}
 			}
 		}

@@ -71,6 +71,10 @@ impl ProcessPlatform for LinuxPlatform {
 	fn inspect_process_token(&self, pid: u32) -> Result<TokenInfo> {
 		crate::process::inspect_process_token(pid)
 	}
+
+	fn inspect_elf(&self, target: &ElfTarget) -> Result<ElfInfo> {
+		crate::elf::inspect_elf(target)
+	}
 }
 
 impl MemoryPlatform for LinuxPlatform {

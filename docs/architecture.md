@@ -14,7 +14,7 @@ Mycelium/
 │   ├── mycelium-ebpf/       eBPF programs (NOT workspace member, nightly)
 │   ├── mycelium-linux/      Linux backend (/proc, /sys, nix, eBPF optional)
 │   ├── mycelium-cli/        CLI binary (clap)
-│   ├── mycelium-mcp/        MCP server (49 tools, rmcp 0.17, stdio)
+│   ├── mycelium-mcp/        MCP server (50 tools, rmcp 0.17, stdio)
 │   └── mycelium-windows/    Windows backend (sysinfo, WinAPI, WMI)
 ├── examples/
 │   └── policy.toml          Example policy configuration
@@ -31,7 +31,7 @@ Mycelium/
 | `mycelium-ebpf` | eBPF programs for syscall tracing and network monitoring (not a workspace member) | `aya-ebpf`, `mycelium-ebpf-common` |
 | `mycelium-linux` | Implements `Platform` for Linux. Reads `/proc`, `/sys`, calls `systemctl`/`journalctl`. Optional eBPF probes via `ebpf` feature. | `mycelium-core`, `nix 0.29`, optional: `aya 0.13`, `mycelium-ebpf-common` |
 | `mycelium-cli` | Binary `mycelium` with subcommands for every Platform method. Table and JSON output. | `mycelium-core` (serde, toml), `mycelium-linux`, `clap 4`, `serde_json` |
-| `mycelium-mcp` | MCP server exposing all 49 tools via JSON-RPC stdio transport. | `mycelium-core` (serde, toml), `mycelium-linux`, `rmcp 0.17`, `tokio`, `clap 4`, `schemars` |
+| `mycelium-mcp` | MCP server exposing all 50 tools via JSON-RPC stdio transport. | `mycelium-core` (serde, toml), `mycelium-linux`, `rmcp 0.17`, `tokio`, `clap 4`, `schemars` |
 | `mycelium-windows` | Windows backend using sysinfo, WinAPI, WMI, NetAPI32, and winreg. Implements all 46 Platform methods. | `mycelium-core`, `sysinfo`, `windows 0.61`, `wmi`, `winreg` |
 
 ## Data Flow
@@ -92,6 +92,8 @@ OutputFormat::Json ◄──────────── Vec<ProcessInfo>
 | **4.5** | Complete | Security research features (handles, PE parsing, token inspection, persistence scanning, hook detection, memory pattern search) |
 | **5** | Complete | Linux backend feature parity (threads, modules, capabilities, FD handles, token inspection, memory search, persistence scanning, hook detection) |
 | **6** | Complete | eBPF probes (syscall tracing, network monitoring via aya, feature-gated) |
+| **7** | Planned | RE & debugging primitives (wildcard pattern search, ELF parser, memory protection, disassembly, symbols, registers, stack unwinding) |
+| **8** | Planned | Advanced threat detection (rootkit scanning, code injection, anti-debug, expanded eBPF probes) |
 
 ### Phase 1 Scope
 

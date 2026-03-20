@@ -267,34 +267,73 @@ const SEARCH_MAX_CONTEXT: usize = 256;
 /// Skip regions larger than this (256 MiB).
 const SEARCH_MAX_REGION_SIZE: u64 = 256 * 1024 * 1024;
 
-/// Convert a SearchPattern into raw bytes for needle matching.
-fn pattern_to_bytes(pattern: &SearchPattern) -> Vec<u8> {
+/// Convert a SearchPattern into raw bytes and an optional mask for matching.
+///
+/// Returns `(needle, mask)`. When `mask` is `None`, use exact byte matching.
+/// When `mask` is `Some`, byte `i` matches if `(haystack[i] & mask[i]) == (needle[i] & mask[i])`.
+fn pattern_to_bytes(pattern: &SearchPattern) -> (Vec<u8>, Option<Vec<u8>>) {
 	match pattern {
-		SearchPattern::Bytes(b) => b.clone(),
-		SearchPattern::Utf8(s) => s.as_bytes().to_vec(),
-		SearchPattern::Utf16(s) => s.encode_utf16().flat_map(|c| c.to_le_bytes()).collect(),
+		SearchPattern::Bytes(b) => (b.clone(), None),
+		SearchPattern::Utf8(s) => (s.as_bytes().to_vec(), None),
+		SearchPattern::Utf16(s) => {
+			(s.encode_utf16().flat_map(|c| c.to_le_bytes()).collect(), None)
+		}
+		SearchPattern::MaskedBytes { pattern, mask } => {
+			(pattern.clone(), Some(mask.clone()))
+		}
 	}
 }
 
 /// Find all occurrences of `needle` in `haystack`, returning byte offsets.
-fn find_all_occurrences(haystack: &[u8], needle: &[u8]) -> Vec<usize> {
+///
+/// When `mask` is `None`, performs exact matching (fast path).
+/// When `mask` is `Some`, byte `i` matches if `(h & m) == (n & m)`.
+fn find_all_occurrences(
+	haystack: &[u8],
+	needle: &[u8],
+	mask: Option<&[u8]>,
+) -> Vec<usize> {
 	if needle.is_empty() || haystack.len() < needle.len() {
 		return Vec::new();
 	}
 
 	let mut positions = Vec::new();
-	let mut start = 0;
-	while start + needle.len() <= haystack.len() {
-		if let Some(pos) = haystack[start..]
-			.windows(needle.len())
-			.position(|w| w == needle)
-		{
-			positions.push(start + pos);
-			start += pos + 1;
-		} else {
-			break;
+
+	match mask {
+		None => {
+			// Fast path: exact matching via sliding window
+			let mut start = 0;
+			while start + needle.len() <= haystack.len() {
+				if let Some(pos) = haystack[start..]
+					.windows(needle.len())
+					.position(|w| w == needle)
+				{
+					positions.push(start + pos);
+					start += pos + 1;
+				} else {
+					break;
+				}
+			}
+		}
+		Some(m) => {
+			// Masked matching: per-byte comparison with mask
+			let len = needle.len();
+			let end = haystack.len() - len;
+			for i in 0..=end {
+				let mut matched = true;
+				for j in 0..len {
+					if (haystack[i + j] & m[j]) != (needle[j] & m[j]) {
+						matched = false;
+						break;
+					}
+				}
+				if matched {
+					positions.push(i);
+				}
+			}
 		}
 	}
+
 	positions
 }
 
@@ -318,9 +357,16 @@ pub fn search_process_memory(
 	pattern: &SearchPattern,
 	options: &MemorySearchOptions,
 ) -> Result<Vec<MemoryMatch>> {
-	let needle = pattern_to_bytes(pattern);
+	let (needle, mask) = pattern_to_bytes(pattern);
 	if needle.is_empty() {
 		return Err(MyceliumError::ParseError("search pattern is empty".into()));
+	}
+	if let Some(ref m) = mask
+		&& m.len() != needle.len()
+	{
+		return Err(MyceliumError::ParseError(
+			"mask length must equal pattern length".into(),
+		));
 	}
 
 	let regions = process_memory_maps(pid)?;
@@ -385,7 +431,7 @@ pub fn search_process_memory(
 				Err(_) => break,
 			}
 
-			for pos in find_all_occurrences(&buf, &needle) {
+			for pos in find_all_occurrences(&buf, &needle, mask.as_deref()) {
 				if matches.len() >= max_matches {
 					break;
 				}
@@ -521,70 +567,146 @@ mod tests {
 	#[test]
 	fn test_pattern_to_bytes_raw() {
 		let pat = SearchPattern::Bytes(vec![0xDE, 0xAD, 0xBE, 0xEF]);
-		assert_eq!(pattern_to_bytes(&pat), vec![0xDE, 0xAD, 0xBE, 0xEF]);
+		let (bytes, mask) = pattern_to_bytes(&pat);
+		assert_eq!(bytes, vec![0xDE, 0xAD, 0xBE, 0xEF]);
+		assert!(mask.is_none());
 	}
 
 	#[test]
 	fn test_pattern_to_bytes_utf8() {
 		let pat = SearchPattern::Utf8("hello".into());
-		assert_eq!(pattern_to_bytes(&pat), b"hello".to_vec());
+		let (bytes, mask) = pattern_to_bytes(&pat);
+		assert_eq!(bytes, b"hello".to_vec());
+		assert!(mask.is_none());
 	}
 
 	#[test]
 	fn test_pattern_to_bytes_utf16() {
 		let pat = SearchPattern::Utf16("AB".into());
+		let (bytes, mask) = pattern_to_bytes(&pat);
 		// 'A' = 0x0041 LE -> [0x41, 0x00], 'B' = 0x0042 LE -> [0x42, 0x00]
-		assert_eq!(pattern_to_bytes(&pat), vec![0x41, 0x00, 0x42, 0x00]);
+		assert_eq!(bytes, vec![0x41, 0x00, 0x42, 0x00]);
+		assert!(mask.is_none());
 	}
 
 	#[test]
 	fn test_pattern_to_bytes_utf16_empty() {
 		let pat = SearchPattern::Utf16(String::new());
-		assert!(pattern_to_bytes(&pat).is_empty());
+		let (bytes, _) = pattern_to_bytes(&pat);
+		assert!(bytes.is_empty());
 	}
 
-	// find_all_occurrences tests
+	#[test]
+	fn test_pattern_to_bytes_masked() {
+		let pat = SearchPattern::MaskedBytes {
+			pattern: vec![0x48, 0x8B, 0x00, 0x00],
+			mask: vec![0xFF, 0xFF, 0x00, 0x00],
+		};
+		let (bytes, mask) = pattern_to_bytes(&pat);
+		assert_eq!(bytes, vec![0x48, 0x8B, 0x00, 0x00]);
+		assert_eq!(mask.unwrap(), vec![0xFF, 0xFF, 0x00, 0x00]);
+	}
+
+	// find_all_occurrences tests (exact matching)
 
 	#[test]
 	fn test_find_all_occurrences_basic() {
 		let haystack = b"abcabcabc";
 		let needle = b"abc";
-		assert_eq!(find_all_occurrences(haystack, needle), vec![0, 3, 6]);
+		assert_eq!(find_all_occurrences(haystack, needle, None), vec![0, 3, 6]);
 	}
 
 	#[test]
 	fn test_find_all_occurrences_overlapping() {
 		let haystack = b"aaaa";
 		let needle = b"aa";
-		assert_eq!(find_all_occurrences(haystack, needle), vec![0, 1, 2]);
+		assert_eq!(find_all_occurrences(haystack, needle, None), vec![0, 1, 2]);
 	}
 
 	#[test]
 	fn test_find_all_occurrences_no_match() {
 		let haystack = b"abcdef";
 		let needle = b"xyz";
-		assert!(find_all_occurrences(haystack, needle).is_empty());
+		assert!(find_all_occurrences(haystack, needle, None).is_empty());
 	}
 
 	#[test]
 	fn test_find_all_occurrences_empty_needle() {
 		let haystack = b"abc";
 		let needle = b"";
-		assert!(find_all_occurrences(haystack, needle).is_empty());
+		assert!(find_all_occurrences(haystack, needle, None).is_empty());
 	}
 
 	#[test]
 	fn test_find_all_occurrences_needle_larger_than_haystack() {
 		let haystack = b"ab";
 		let needle = b"abc";
-		assert!(find_all_occurrences(haystack, needle).is_empty());
+		assert!(find_all_occurrences(haystack, needle, None).is_empty());
 	}
 
 	#[test]
 	fn test_find_all_occurrences_single_byte() {
 		let haystack = b"a.b.c";
 		let needle = b".";
-		assert_eq!(find_all_occurrences(haystack, needle), vec![1, 3]);
+		assert_eq!(find_all_occurrences(haystack, needle, None), vec![1, 3]);
+	}
+
+	// find_all_occurrences tests (masked matching)
+
+	#[test]
+	fn test_find_masked_single_wildcard() {
+		// Pattern: 0x41 ?? 0x43 -- matches "A?C" where ? is any byte
+		let haystack = b"ABCADCAXC";
+		let needle = &[0x41, 0x00, 0x43];
+		let mask = &[0xFF, 0x00, 0xFF];
+		assert_eq!(
+			find_all_occurrences(haystack, needle, Some(mask)),
+			vec![0, 3, 6]
+		);
+	}
+
+	#[test]
+	fn test_find_masked_multiple_wildcards() {
+		// Pattern: 0x7F ?? ?? 0x46 -- matches ELF magic with wildcard class/data bytes
+		let haystack = &[0x7F, 0x45, 0x4C, 0x46, 0x00, 0x7F, 0x01, 0x02, 0x46];
+		let needle = &[0x7F, 0x00, 0x00, 0x46];
+		let mask = &[0xFF, 0x00, 0x00, 0xFF];
+		assert_eq!(
+			find_all_occurrences(haystack, needle, Some(mask)),
+			vec![0, 5]
+		);
+	}
+
+	#[test]
+	fn test_find_masked_all_wildcards() {
+		// All wildcard mask -- matches every position
+		let haystack = b"abc";
+		let needle = &[0x00];
+		let mask = &[0x00];
+		assert_eq!(
+			find_all_occurrences(haystack, needle, Some(mask)),
+			vec![0, 1, 2]
+		);
+	}
+
+	#[test]
+	fn test_find_masked_no_match() {
+		let haystack = b"AABBCC";
+		let needle = &[0xFF, 0x00, 0xFF];
+		let mask = &[0xFF, 0x00, 0xFF];
+		assert!(find_all_occurrences(haystack, needle, Some(mask)).is_empty());
+	}
+
+	#[test]
+	fn test_find_masked_exact_fallback() {
+		// All-0xFF mask is equivalent to exact matching
+		let haystack = b"abcabc";
+		let needle = b"abc";
+		let mask = &[0xFF, 0xFF, 0xFF];
+		assert_eq!(
+			find_all_occurrences(haystack, needle, Some(mask)),
+			vec![0, 3]
+		);
 	}
 
 	// permissions_match tests

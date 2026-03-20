@@ -160,6 +160,76 @@ pub struct PeExport {
 	pub rva: u32,
 }
 
+/// Target for ELF header inspection.
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum ElfTarget {
+	Pid(u32),
+	Path(String),
+}
+
+/// Parsed ELF header information.
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct ElfInfo {
+	/// ELF class: "ELF32" or "ELF64".
+	pub class: String,
+	/// Byte order: "little" or "big".
+	pub endianness: String,
+	/// OS/ABI: "SYSV", "GNU", etc.
+	pub os_abi: String,
+	/// Object type: "executable", "shared object", "relocatable", "core".
+	pub elf_type: String,
+	/// Architecture: "x86_64", "x86", "AArch64", "ARM", etc.
+	pub machine: String,
+	/// Entry point virtual address.
+	pub entry_point: u64,
+	/// ELF interpreter path (e.g. "/lib64/ld-linux-x86-64.so.2").
+	pub interpreter: Option<String>,
+	/// Section headers.
+	pub sections: Vec<ElfSection>,
+	/// DT_NEEDED shared library dependencies.
+	pub dynamic_libs: Vec<String>,
+	/// Dynamic symbols (.dynsym).
+	pub symbols: Vec<ElfSymbol>,
+}
+
+/// An ELF section header.
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct ElfSection {
+	pub name: String,
+	/// Section type: "PROGBITS", "SYMTAB", "DYNSYM", "STRTAB", etc.
+	pub section_type: String,
+	/// Virtual address in memory.
+	pub address: u64,
+	/// File offset.
+	pub offset: u64,
+	/// Section size in bytes.
+	pub size: u64,
+	/// Flags: "ALLOC", "WRITE", "EXECINSTR".
+	pub flags: Vec<String>,
+}
+
+/// An ELF symbol table entry.
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct ElfSymbol {
+	pub name: String,
+	/// Symbol value (address).
+	pub value: u64,
+	/// Symbol size in bytes.
+	pub size: u64,
+	/// Type: "FUNC", "OBJECT", "NOTYPE", "SECTION", "FILE".
+	pub symbol_type: String,
+	/// Binding: "GLOBAL", "LOCAL", "WEAK".
+	pub binding: String,
+	/// Visibility: "DEFAULT", "HIDDEN", "PROTECTED".
+	pub visibility: String,
+	/// Section name, or "UND" for undefined imports.
+	pub section: Option<String>,
+}
+
 /// Extended token security details for a process.
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]

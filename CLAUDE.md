@@ -20,7 +20,7 @@ Cargo workspace with shared zero-dep core + platform backends:
 - **mycelium-ebpf-common**: Shared `#[repr(C)]` eBPF event types (`#![no_std]`).
 - **mycelium-ebpf**: eBPF programs (not a workspace member, nightly, `bpfel-unknown-none`).
 - **mycelium-linux**: Linux backend using /proc, /sys, nix. Optional eBPF probes via `ebpf` feature (aya 0.13).
-- **mycelium-mcp**: MCP server -- 49 tools via rmcp 0.17, stdio transport, policy enforcement, audit logging.
+- **mycelium-mcp**: MCP server -- 50 tools via rmcp 0.17, stdio transport, policy enforcement, audit logging.
 - **mycelium-cli**: CLI binary with clap.
 - **mycelium-windows**: Windows backend using sysinfo, WinAPI, WMI, NetAPI32, winreg.
 

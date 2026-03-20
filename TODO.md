@@ -2,15 +2,28 @@
 
 Planned development phases for security and reverse engineering features.
 
-## Phase 7: Advanced Threat Detection
+## Phase 7: Reverse Engineering & Debugging Primitives
+
+Core infrastructure that later phases depend on.
+
+- [x] **Wildcard pattern search** -- support `??` mask bytes in hex patterns (e.g. `48 8B ?? ?? 89 05`) for signature-style scanning across process memory
+- [x] **ELF parser** -- parity with PE inspector: headers, sections, imports/exports, symbols, dynamic linking info. Uses `goblin` crate
+- [ ] **Memory protection changes** -- implement `mprotect` (Linux) and `VirtualProtectEx` (Windows) wrappers so code regions can be made writable for patching
+- [ ] **Disassembly** -- instruction decoding for memory regions via `iced-x86` or `capstone-rs`, support x86/x86_64/ARM64
+- [ ] **Symbol resolution** -- map addresses to function names using debug info (DWARF on Linux, PDB on Windows) and export tables
+- [ ] **File I/O eBPF probe** -- trace openat/read/write/close syscalls per process, complements existing syscall and network probes
+- [ ] **Memory allocation/deallocation** -- `mmap`/`VirtualAlloc` wrappers for injecting new memory regions into target processes
+- [ ] **Stack unwinding** -- generate call stacks from thread context using frame pointers or DWARF CFI
+- [ ] **Register reading** -- `ptrace(GETREGS)` on Linux, `GetThreadContext` on Windows for inspecting CPU state per thread
+- [ ] MCP tools: `memory_search` wildcard mode, `process_elf_inspect`, `memory_protect`, `memory_disassemble`, `process_symbols`, new eBPF probe types, `process_stack`, `process_registers`
+
+## Phase 8: Advanced Threat Detection
 
 - [ ] **Rootkit detection (Linux)** -- kernel module signature verification, hidden process detection (/proc PID gaps vs task list), hidden port detection (/proc/net vs live sockets), /proc anomaly scanning
 - [ ] **Code injection detection (Windows)** -- thread callstack analysis for injected DLLs, RWX memory region scanning, code cave detection (entropy analysis of PE section slack space), PEB/TEB manipulation detection
 - [ ] **Anti-debugging detection (cross-platform)** -- Linux: ptrace status, TracerPid, timing checks. Windows: NtGlobalFlag, heap flags, debug object handles
 - [ ] **Expanded eBPF probes** -- file access tracing (openat), process execution tracing (sched_process_exec), privilege escalation detection (setuid/setgid/capset syscalls)
 - [ ] MCP tools: `security_rootkit_scan`, `security_injection_scan`, `security_antidebug_check`, new eBPF probe types
-
-## Phase 8: Signature & Heuristic Scanning
 
 - [ ] **YARA rule engine** -- integrate yara-x (Rust-native YARA by VirusTotal) for file and process memory scanning, ship default ruleset for common malware indicators
 - [ ] **Entropy analysis** -- per-section entropy calculation for PE/ELF binaries to detect packing/encryption

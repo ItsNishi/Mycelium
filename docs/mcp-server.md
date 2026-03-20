@@ -1,6 +1,6 @@
 # MCP Server
 
-The `mycelium-mcp` binary exposes all 49 tools (45 Platform methods + 4 probe tools) as MCP tools over a JSON-RPC stdio transport. AI agents connect, discover tools via `tools/list`, and call them with typed JSON parameters. Every call is evaluated against the policy engine and logged to the audit trail.
+The `mycelium-mcp` binary exposes all 50 tools (45 Platform methods + 4 probe tools) as MCP tools over a JSON-RPC stdio transport. AI agents connect, discover tools via `tools/list`, and call them with typed JSON parameters. Every call is evaluated against the policy engine and logged to the audit trail.
 
 ## Building
 
@@ -74,7 +74,7 @@ The server responds to `initialize`, `notifications/initialized`, `tools/list`, 
 
 ## Tool List
 
-All 49 tools organized by category. Tools without parameters take an empty `arguments: {}` object. Tools with parameters require a JSON object matching the listed schema.
+All 50 tools organized by category. Tools without parameters take an empty `arguments: {}` object. Tools with parameters require a JSON object matching the listed schema.
 
 ### Process (11 tools)
 

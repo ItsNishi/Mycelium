@@ -72,6 +72,14 @@ pub trait ProcessPlatform: Send + Sync {
 		))
 	}
 
+	/// Parse ELF headers of a process binary or file.
+	fn inspect_elf(&self, target: &ElfTarget) -> Result<ElfInfo> {
+		let _ = target;
+		Err(crate::error::MyceliumError::Unsupported(
+			"inspect_elf is not supported on this platform".to_string(),
+		))
+	}
+
 	/// Inspect process token security details (integrity, groups, elevation, impersonation).
 	fn inspect_process_token(&self, pid: u32) -> Result<TokenInfo> {
 		let _ = pid;

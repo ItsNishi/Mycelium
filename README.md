@@ -14,7 +14,7 @@ Like fungal mycelium threading through soil to surface nutrients, Mycelium threa
 
 ## ✨ Features
 
-- 🔍 **49 tools** across 10 categories (process, memory, network, storage, system, tuning, services, logs, security, probes)
+- 🔍 **50 tools** across 10 categories (process, memory, network, storage, system, tuning, services, logs, security, probes)
 - 🛡️ **Policy engine** with role presets, capability groups, resource filters, and specificity-based evaluation
 - 📊 **Dual output** -- human-readable tables or structured JSON
 - 🧩 **Modular workspace** -- zero-dependency core, pluggable OS backends
@@ -52,7 +52,7 @@ Like fungal mycelium threading through soil to surface nutrients, Mycelium threa
 | `mycelium-ebpf` | eBPF programs for syscall tracing and network monitoring (not a workspace member) |
 | `mycelium-linux` | Linux backend -- `/proc`, `/sys`, `systemctl`, `journalctl`, eBPF (optional) |
 | `mycelium-cli` | CLI binary with table/JSON output for every operation |
-| `mycelium-mcp` | MCP server exposing all 49 tools to AI agents via JSON-RPC over stdio |
+| `mycelium-mcp` | MCP server exposing all 50 tools to AI agents via JSON-RPC over stdio |
 | `mycelium-windows` | Windows backend (sysinfo, WinAPI, WMI, NetAPI32) |
 
 ## 🚀 Quick Start
@@ -79,7 +79,7 @@ mycelium-mcp
 mycelium-mcp --config policy.toml --agent deploy-bot
 ```
 
-The server speaks JSON-RPC over stdin/stdout (MCP protocol 2024-11-05). All 49 tools are registered and discoverable via `tools/list`. Policy enforcement and audit logging apply to every tool call.
+The server speaks JSON-RPC over stdin/stdout (MCP protocol 2024-11-05). All 50 tools are registered and discoverable via `tools/list`. Policy enforcement and audit logging apply to every tool call.
 
 **Claude Desktop / MCP client config:**
 
@@ -220,7 +220,7 @@ mycelium policy validate policy.toml
 
 | Category | Commands |
 |----------|----------|
-| **Process** | `list`, `inspect <PID>`, `resources <PID>`, `threads <PID>`, `modules <PID>`, `privileges <PID>`, `handles <PID>`, `pe-inspect`, `token <PID>` |
+| **Process** | `list`, `inspect <PID>`, `resources <PID>`, `threads <PID>`, `modules <PID>`, `privileges <PID>`, `handles <PID>`, `pe-inspect`, `elf`, `token <PID>` |
 | **Memory** | `info`, `process <PID>`, `maps <PID>`, `read`, `write`, `search` |
 | **Network** | `interfaces`, `connections`, `routes`, `ports`, `firewall` |
 | **Storage** | `disks`, `partitions`, `mounts`, `io` |
@@ -245,10 +245,10 @@ mycelium policy validate policy.toml
 | **4.5** | ✅ Complete | Security research (handles, PE parsing, token inspection, persistence, hook detection, memory search) |
 | **5** | ✅ Complete | Linux backend feature parity (threads, modules, capabilities, FD handles, token inspection, memory search, persistence scanning, hook detection) |
 | **6** | ✅ Complete | eBPF probes (syscall tracing, network monitoring via aya, feature-gated) |
-| **7** | Planned | Advanced threat detection (rootkit scanning, code injection, anti-debug, expanded eBPF probes) |
-| **8** | Planned | Signature & heuristic scanning (YARA, entropy analysis, string extraction, IOC matching, behavioral heuristics) |
+| **7** | Planned | RE & debugging primitives (wildcard pattern search, ELF parser, memory protection, disassembly, symbols, registers, stack unwinding) |
+| **8** | Planned | Advanced threat detection (rootkit scanning, code injection, anti-debug, expanded eBPF probes) |
 
-See [TODO.md](TODO.md) for detailed phase breakdowns and [BACKLOG.md](BACKLOG.md) for the feature wishlist.
+See [TODO.md](TODO.md) for detailed phase breakdowns.
 
 ## 🛠️ Development
 
@@ -290,8 +290,7 @@ cargo build --workspace --features mycelium-linux/ebpf
 | [Development Guide](docs/development.md) | Build, test, conventions, adding methods and backends |
 | [Changelog](CHANGELOG.md) | All notable changes by version |
 | [Contributing](CONTRIBUTING.md) | Guidelines for contributors |
-| [TODO](TODO.md) | Planned security/RE phases (7-10) |
-| [Backlog](BACKLOG.md) | Feature wishlist (platform, observability, extensibility) |
+| [TODO](TODO.md) | Planned security/RE phases (7-8) |
 
 ## 📄 License
 

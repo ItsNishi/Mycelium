@@ -341,6 +341,54 @@ pub async fn handle_pe_inspect(
 	}
 }
 
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct ElfInspectRequest {
+	/// Process ID to inspect (mutually exclusive with path)
+	#[schemars(description = "Process ID whose binary ELF header to parse")]
+	pub pid: Option<u32>,
+	/// File path to inspect (mutually exclusive with pid)
+	#[schemars(description = "Path to an ELF file to parse")]
+	pub path: Option<String>,
+}
+
+pub async fn handle_elf_inspect(
+	svc: &MyceliumMcpService,
+	req: ElfInspectRequest,
+) -> Result<CallToolResult, McpError> {
+	use mycelium_core::types::ElfTarget;
+
+	let target = match (req.pid, &req.path) {
+		(Some(pid), None) => ElfTarget::Pid(pid),
+		(None, Some(path)) => ElfTarget::Path(path.clone()),
+		_ => return err_text("exactly one of 'pid' or 'path' must be provided"),
+	};
+
+	let resource = match &target {
+		ElfTarget::Pid(pid) => format!("pid:{pid}"),
+		ElfTarget::Path(p) => format!("path:{p}"),
+	};
+
+	if let Some(result) = svc.check_policy("process_elf_inspect", Some(&resource)) {
+		return result;
+	}
+	if svc.is_dry_run() {
+		return dry_run_text("process_elf_inspect");
+	}
+
+	let platform = svc.platform();
+	match tokio::task::spawn_blocking(move || platform.inspect_elf(&target)).await {
+		Ok(Ok(info)) => {
+			svc.log_success("process_elf_inspect", Some(&resource));
+			ok_json(&info)
+		}
+		Ok(Err(e)) => {
+			svc.log_failure("process_elf_inspect", &e.to_string());
+			err_text(&e.to_string())
+		}
+		Err(e) => svc.handle_join_error("process_elf_inspect", e),
+	}
+}
+
 pub async fn handle_token(
 	svc: &MyceliumMcpService,
 	req: PidRequest,
